@@ -81,6 +81,9 @@ npm run deploy         # deploy Worker; provisions the custom domain on first ru
 
 The custom domain requires the `diegoromero.es` zone on the same Cloudflare account.
 
+Full deploy, verification and rollback procedures: [`docs/deploy.md`](docs/deploy.md).
+Phase 1 is **live** at https://geospatial-platform.diegoromero.es.
+
 ## Roadmap
 
 Phases 0–1 (bootstrap + ingest) are implemented. Next: **Phase 2** Digital Twin batch

@@ -25,13 +25,13 @@
     {
       "binding": "DB",
       "database_name": "geospatial-db",
-      "database_id": "REPLACE_WITH_D1_ID",
+      "database_id": "0b3e27e1-d4dc-4e49-ad7b-ffdb293ee5a2",
       "migrations_dir": "migrations"
     }
   ],
 
   "kv_namespaces": [
-    { "binding": "CONFIG", "id": "REPLACE_WITH_KV_ID" }
+    { "binding": "CONFIG", "id": "ad963de3572743359d0b39e4a12542bb" }
   ],
 
   "r2_buckets": [
