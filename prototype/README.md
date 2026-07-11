@@ -1,11 +1,24 @@
-# Prototipo — Densidad de población de Aragón
+# Prototipo — Digital Twin de Aragón
 
 Mapa estático local que dibuja las **9.408 celdas H3 (res-7, ~5 km²)** del Digital
-Twin coloreadas por densidad de población (hab/km²). Los datos son los del INE
-Censo Anual 2025 interpolados a H3 en la Fase 2.1 — los mismos que hay en D1.
+Twin. Un selector de **capa** las colorea por distintos campos y, al pasar el ratón,
+un panel muestra el detalle completo de la celda. Todos los datos vienen del build
+principal (INE Censo Anual 2025, CORINE Land Cover 2018, EFFIS) — los mismos que en D1.
 
 No necesita Cloudflare, Worker ni D1: lee un único GeoJSON generado a partir de
 `tmp/digital-twin.sql`.
+
+## Capas
+
+- **Densidad** (hab/km²) — YlOrRd, cortes fijos (distribución muy sesgada: de <1 en la
+  estepa a ~25.000 en Zaragoza).
+- **% mayores 65+** — rampa BuPu; celdas sin población en gris (evita "0 %" engañoso).
+- **Combustible** — clase ordinal derivada de CORINE (nulo → muy alto), rampa de riesgo.
+- **Incendio histórico** — binario: área quemada EFFIS (87 celdas) resaltada.
+
+El panel de hover muestra, además: **población desglosada por bandas de edad**
+(0-14 / 15-64 / 65+ con % ), uso del suelo, combustible, pendiente, distancia al
+activo más cercano, incendio histórico, lat/lon y la celda H3.
 
 ## Uso
 
@@ -20,17 +33,16 @@ python3 -m http.server 8000 --directory prototype
 
 ## Ficheros
 
-- `build-geojson.mjs` — parsea `tmp/digital-twin.sql`, convierte cada celda H3 a
-  su polígono (`h3-js`) y escribe `data/aragon-density.geojson` (población +
-  densidad por celda, más metadatos: nº celdas, población total, rango de densidad).
-- `index.html` — mapa Leaflet (canvas), choropleth YlOrRd con cortes fijos
-  (la distribución es muy sesgada: de <1 hab/km² en la estepa a ~25.000 en el
-  casco urbano de Zaragoza), leyenda, panel de info al pasar el ratón y basemap
-  oscuro de CARTO.
+- `build-geojson.mjs` — parsea `tmp/digital-twin.sql`, convierte cada celda H3 a su
+  polígono (`h3-js`) y escribe `data/aragon-density.geojson` con todos los campos del
+  Digital Twin por celda (land cover, combustible, densidad, bandas de edad, dist. a
+  activo, histórico de fuego, municipio, lat/lon) + metadatos.
+- `index.html` — mapa Leaflet (canvas), selector de capa, leyenda dinámica, panel de
+  detalle al pasar el ratón y basemap oscuro de CARTO.
 - `data/aragon-density.geojson` — generado; no se versiona (ver `.gitignore`).
 
 ## Notas
 
 - Leaflet, los tiles de CARTO y el basemap se cargan por CDN/red: requiere conexión.
-- Los cortes de la leyenda y la paleta están en las constantes `BREAKS` / `COLORS`
-  al inicio del `<script>` de `index.html` si quieres reencuadrar la escala.
+- Las capas, cortes y paletas están en la constante `LAYERS` (y `D_/E_BREAKS`, `FUEL`)
+  al inicio del `<script>` de `index.html` si quieres reencuadrar escalas o añadir capas.
