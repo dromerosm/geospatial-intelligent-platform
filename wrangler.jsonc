@@ -17,6 +17,9 @@
 
   "vars": { "REGION": "aragon" },
 
+  // Bundle the landing page (src/landing.html) as an importable text module.
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+
   // --- Bindings ---------------------------------------------------------
   // The *_id values are placeholders. Create the resources once and paste
   // the returned ids here (see README "One-time setup").

@@ -10,6 +10,7 @@ import { currentFireWeather, digitalTwinCell, digitalTwinStats, insertObservatio
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { fetchFireWeather } from "./ingest/weather.js";
 import type { Env } from "./types.js";
+import LANDING from "./landing.html";
 
 async function runFirms(env: Env): Promise<void> {
   const now = new Date().toISOString();
@@ -39,6 +40,15 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+function html(body: string): Response {
+  return new Response(body, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "public, max-age=600, s-maxage=3600",
+    },
+  });
+}
+
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const job = controller.cron === "0 * * * *" ? runWeather(env) : runFirms(env);
@@ -50,6 +60,7 @@ export default {
     const { pathname } = url;
     switch (pathname) {
       case "/":
+        return html(LANDING);
       case "/health":
         return json({ ok: true, service: "geospatial-platform", region: env.REGION });
       case "/observations":

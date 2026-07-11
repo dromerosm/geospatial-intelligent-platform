@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Geospatial Intelligence Platform — Alerta temprana de incendios · Aragón</title>
+  <meta name="description" content="Plataforma de inteligencia geoespacial para alerta temprana de incendios forestales en Aragón, construida íntegramente sobre Cloudflare. Estado del proyecto, fuentes de datos públicas autoritativas y arquitectura serverless.">
+  <link rel="canonical" href="https://geospatial-platform.diegoromero.es/">
+  <meta name="robots" content="index,follow">
+  <meta name="author" content="Diego Romero">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Geospatial Intelligence Platform — Aragón">
+  <meta property="og:description" content="Alerta temprana de incendios forestales para Aragón sobre Cloudflare: gemelo digital territorial, datos públicos autoritativos y motor de decisión explicable.">
+  <meta property="og:url" content="https://geospatial-platform.diegoromero.es/">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:site_name" content="geospatial-platform.diegoromero.es">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Geospatial Intelligence Platform — Aragón">
+  <meta name="twitter:description" content="Alerta temprana de incendios forestales para Aragón, construida sobre Cloudflare.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 29 9.5v13L16 30 3 22.5v-13z' fill='%230070f3'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #ffffff; --text: #000000; --muted: #555555; --faint: #767676;
+      --accent: #0070f3; --border: rgba(0,0,0,.12); --card: #ffffff; --card-alt: #fafafa;
+      --ok: #1a7f37; --next: #0070f3; --wait: #8a8a8a;
+      --maxw: 46rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0a; --text: #ededed; --muted: #a1a1a1; --faint: #8a8a8a;
+        --accent: #3b9eff; --border: rgba(255,255,255,.14); --card: #111111; --card-alt: #141414;
+        --ok: #3fb950; --next: #3b9eff; --wait: #8a8a8a;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 16px; line-height: 1.6;
+      -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    }
+    .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 1.25rem; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: saturate(160%) blur(8px); z-index: 10;
+    }
+    .bar { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+    .brand { display: flex; align-items: center; gap: .55rem; font-weight: 700; color: var(--text); }
+    .brand svg { display: block; }
+    .brand small { color: var(--faint); font-weight: 500; }
+    nav a { color: var(--muted); font-size: .9rem; font-weight: 500; margin-left: 1.1rem; }
+    nav a:hover { color: var(--text); text-decoration: none; }
+    .nav-hide { }
+    @media (max-width: 560px) { .nav-hide { display: none; } }
+
+    main { padding: 3.5rem 0 2rem; }
+    section { margin-bottom: 3.75rem; }
+    .eyebrow {
+      color: var(--accent); font-size: .78rem; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase; margin: 0 0 .6rem;
+    }
+    h1 { font-size: clamp(2.1rem, 6vw, 3rem); font-weight: 700; line-height: 1.08; letter-spacing: -.02em; margin: 0 0 1rem; }
+    h2 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em; margin: 0 0 1rem; }
+    h3 { font-size: 1rem; font-weight: 700; margin: 0 0 .3rem; }
+    .lead { font-size: 1.18rem; color: var(--muted); margin: 0 0 1.6rem; max-width: 40rem; }
+    p { margin: 0 0 1rem; }
+    .muted { color: var(--muted); }
+
+    .pills { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .pill {
+      display: inline-flex; align-items: center; gap: .4rem;
+      border: 1px solid var(--border); border-radius: 999px; padding: .3rem .75rem;
+      font-size: .82rem; color: var(--muted); background: var(--card-alt);
+    }
+    .dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; }
+
+    .phases { list-style: none; margin: 0; padding: 0; }
+    .phases li {
+      display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: .8rem;
+      padding: .85rem 0; border-top: 1px solid var(--border);
+    }
+    .phases li:last-child { border-bottom: 1px solid var(--border); }
+    .phases .ph-status { font-size: .78rem; font-weight: 600; white-space: nowrap; }
+    .phases .ph-name { font-weight: 600; }
+    .phases .ph-desc { color: var(--muted); font-size: .92rem; }
+    .st-ok { color: var(--ok); } .st-next { color: var(--next); } .st-wait { color: var(--wait); }
+
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .9rem; }
+    @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      border: 1px solid var(--border); border-radius: 16px; padding: 1.1rem 1.2rem; background: var(--card);
+    }
+    .card h3 { display: flex; align-items: center; gap: .5rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .92rem; line-height: 1.5; }
+    .card .tag { font-size: .72rem; color: var(--faint); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+
+    .flow {
+      border: 1px solid var(--border); border-radius: 16px; background: var(--card-alt);
+      padding: 1.1rem 1.2rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .35rem;
+      font-size: .86rem; color: var(--muted);
+    }
+    .flow b { color: var(--text); font-weight: 600; }
+    .flow .arrow { color: var(--accent); }
+
+    .endpoints { display: grid; gap: .5rem; }
+    .endpoint {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      border: 1px solid var(--border); border-radius: 12px; padding: .7rem .9rem; background: var(--card);
+    }
+    .endpoint code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86rem; color: var(--text); }
+    .endpoint span { color: var(--faint); font-size: .82rem; }
+
+    footer { border-top: 1px solid var(--border); padding: 1.75rem 0; color: var(--faint); font-size: .86rem; }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between; }
+  </style>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Geospatial Intelligence Platform",
+    "applicationCategory": "GIS / Emergency management",
+    "operatingSystem": "Cloudflare Workers",
+    "description": "Plataforma de inteligencia geoespacial para alerta temprana de incendios forestales en Aragón, construida sobre Cloudflare, que enriquece datos públicos autoritativos con un gemelo digital territorial y un motor de decisión explicable.",
+    "url": "https://geospatial-platform.diegoromero.es/",
+    "author": { "@type": "Person", "name": "Diego Romero", "url": "https://diegoromero.es" },
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" }
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div class="wrap bar">
+      <a class="brand" href="/" aria-label="Geospatial Intelligence Platform, inicio">
+        <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13z" fill="var(--accent)"/></svg>
+        Geospatial Platform <small class="nav-hide">· Aragón</small>
+      </a>
+      <nav>
+        <a href="#estado" class="nav-hide">Estado</a>
+        <a href="#fuentes" class="nav-hide">Fuentes</a>
+        <a href="#arquitectura" class="nav-hide">Arquitectura</a>
+        <a href="https://diegoromero.es">diegoromero.es&nbsp;↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section aria-labelledby="hero-h">
+      <p class="eyebrow">Proyecto · En desarrollo</p>
+      <h1 id="hero-h">Geospatial Intelligence&nbsp;Platform</h1>
+      <p class="lead">
+        Alerta temprana de <strong>incendios forestales</strong> para Aragón, construida íntegramente
+        sobre Cloudflare. No compite con Copernicus, EFFIS o NASA FIRMS: <em>enriquece,
+        correlaciona y operativiza</em> sus datos autoritativos sobre un gemelo digital del territorio,
+        con un motor de decisión explicable.
+      </p>
+      <div class="pills">
+        <span class="pill"><span class="dot" style="background:var(--ok)"></span>Fases 0–2 completadas</span>
+        <span class="pill">Serverless en Cloudflare</span>
+        <span class="pill">Región: Aragón (~9.400 celdas H3)</span>
+        <span class="pill">Datos públicos autoritativos</span>
+      </div>
+    </section>
+
+    <section id="estado" aria-labelledby="estado-h">
+      <p class="eyebrow">Estado del trabajo</p>
+      <h2 id="estado-h">Hoja de ruta</h2>
+      <ul class="phases">
+        <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fases 0–1 · Ingesta dinámica</span><br><span class="ph-desc">Workers con Cron: focos NASA FIRMS (15 min) y meteorología de incendio Open-Meteo (horaria), normalizados a D1; payloads crudos a R2; auditoría.</span></span><span></span></li>
+        <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 2 · Gemelo digital territorial</span><br><span class="ph-desc">~9.400 celdas H3 (res-7) de Aragón con terreno, cobertura del suelo→combustible, histórico de incendios, distancia a activos, población + densidad + franjas de edad y municipio.</span></span><span></span></li>
+        <li><span class="ph-status st-next">◆ Próxima</span><span><span class="ph-name">Fase 3 · Motor de decisión determinista</span><br><span class="ph-desc">Correlación, persistencia, clustering H3 y scoring explicable con contribuciones nombradas y umbral de confianza. Fuente autoritativa de eventos.</span></span><span></span></li>
+        <li><span class="ph-status st-wait">○ Planificada</span><span><span class="ph-name">Fase 4 · Razonamiento con IA</span><br><span class="ph-desc">Un agente LLM (vía Cloudflare AI Gateway) genera un briefing operativo estructurado sólo para eventos sobre umbral. Explica; nunca detecta.</span></span><span></span></li>
+        <li><span class="ph-status st-wait">○ Planificada</span><span><span class="ph-name">Fase 5 · Operación</span><br><span class="ph-desc">Mapa interactivo (MapLibre), API REST y alertas por Telegram, respetando siempre la resolución y la incertidumbre de la fuente.</span></span><span></span></li>
+      </ul>
+    </section>
+
+    <section id="fuentes" aria-labelledby="fuentes-h">
+      <p class="eyebrow">Fuentes de datos</p>
+      <h2 id="fuentes-h">Datos públicos autoritativos</h2>
+      <p class="muted">Se prioriza la fuente original de cada organismo sobre republicaciones, buscando la mayor actualidad.</p>
+      <div class="grid">
+        <div class="card"><span class="tag">Dinámico</span><h3>NASA FIRMS</h3><p>Focos térmicos VIIRS (375 m), casi tiempo real, como huellas de observación.</p></div>
+        <div class="card"><span class="tag">Dinámico</span><h3>Open-Meteo</h3><p>Meteorología de incendio (temperatura, humedad, viento) e indicador Triple-30.</p></div>
+        <div class="card"><span class="tag">INE · 2025</span><h3>Censo Anual de Población</h3><p>Población, densidad y franjas de edad por sección censal (ref. 1-ene-2025), interpoladas a H3.</p></div>
+        <div class="card"><span class="tag">Copernicus · EEA</span><h3>CORINE Land Cover</h3><p>Cobertura del suelo mapeada a clase de combustible por celda.</p></div>
+        <div class="card"><span class="tag">Copernicus</span><h3>EFFIS</h3><p>Perímetros históricos de áreas quemadas para el histórico de incendios por celda.</p></div>
+        <div class="card"><span class="tag">Contexto</span><h3>OpenStreetMap · Open-Elevation</h3><p>Infraestructura crítica (bomberos, subestaciones, núcleos) y elevación → pendiente/orientación.</p></div>
+      </div>
+    </section>
+
+    <section id="arquitectura" aria-labelledby="arq-h">
+      <p class="eyebrow">Arquitectura</p>
+      <h2 id="arq-h">Serverless, íntegramente sobre Cloudflare</h2>
+      <p class="muted">Escala a cero, coste bajo y explicable por defecto. Sin PostGIS: el geoprocesamiento se resuelve por clave de celda <strong>H3</strong> y geometría en el propio Worker.</p>
+      <div class="grid">
+        <div class="card"><h3>Workers + Cron</h3><p>Ingesta programada y API. Un único punto desplegable, escala a cero.</p></div>
+        <div class="card"><h3>D1 (SQLite)</h3><p>Observaciones, gemelo digital, eventos y registro de auditoría.</p></div>
+        <div class="card"><h3>R2 · KV</h3><p>Payloads crudos para replay/auditoría; configuración y umbrales.</p></div>
+        <div class="card"><h3>Indexado H3</h3><p>Celdas de ~5 km² como clave espacial; joins por igualdad, sin SQL espacial.</p></div>
+        <div class="card"><h3>AI Gateway <span class="tag">Fase 4</span></h3><p>Razonamiento LLM cacheado, con límites y observabilidad de coste; proveedor intercambiable.</p></div>
+        <div class="card"><h3>Durable Objects <span class="tag">Fase 5</span></h3><p>Ventanas temporales con estado (p. ej. vigilancia de rayos) y coordinación de eventos.</p></div>
+      </div>
+      <p class="muted" style="margin:1.25rem 0 .6rem;font-size:.82rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--faint)">Flujo de eventos</p>
+      <div class="flow">
+        <b>Feeds</b> <span class="arrow">→</span> <b>Gemelo digital (H3)</b> <span class="arrow">→</span>
+        <b>Motor determinista</b> <span class="arrow">→</span> <b>Razonamiento IA</b> <span class="arrow">→</span>
+        <b>Briefing operativo</b> <span class="arrow">→</span> <b>Operadores</b>
+      </div>
+    </section>
+
+    <section id="api" aria-labelledby="api-h">
+      <p class="eyebrow">API en vivo</p>
+      <h2 id="api-h">Endpoints de solo lectura</h2>
+      <div class="endpoints">
+        <a class="endpoint" href="/health"><code>GET /health</code><span>Estado del servicio</span></a>
+        <a class="endpoint" href="/digital-twin"><code>GET /digital-twin</code><span>Resumen del gemelo digital</span></a>
+        <a class="endpoint" href="/observations"><code>GET /observations</code><span>Últimas detecciones</span></a>
+        <a class="endpoint" href="/fire-weather"><code>GET /fire-weather</code><span>Meteorología de incendio por celda</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <span>© 2026 <a href="https://diegoromero.es">diegoromero.es</a> · Geospatial Intelligence Platform</span>
+      <span>Construido sobre Cloudflare</span>
+    </div>
+  </footer>
+</body>
+</html>
