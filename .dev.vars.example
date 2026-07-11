@@ -1,0 +1,11 @@
+# Copy to `.dev.vars` for local `wrangler dev`, and set as secrets for prod
+# with `wrangler secret put <NAME>`. Never commit real values.
+
+# NASA FIRMS map key (free): https://firms.modaps.eosdis.nasa.gov/api/map_key/
+FIRMS_MAP_KEY=""
+
+# --- Reserved for later phases (not used in Phase 1) ---
+# OpenAI key, reached through Cloudflare AI Gateway (Phase 4)
+OPENAI_API_KEY=""
+# Telegram bot token for operational alerts (Phase 5)
+TELEGRAM_BOT_TOKEN=""

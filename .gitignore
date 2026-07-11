@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Wrangler / Cloudflare
+.wrangler/
+dist/
+
+# Secrets (never commit)
+.dev.vars
+.env
+
+# OS
+.DS_Store

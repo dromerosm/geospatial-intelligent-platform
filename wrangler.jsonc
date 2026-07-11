@@ -1,0 +1,46 @@
+{
+  // Cloudflare Workers configuration.
+  // Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "geospatial-platform",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Structured logs + metrics in the Cloudflare dashboard.
+  "observability": { "enabled": true },
+
+  // Cron triggers. The scheduled() handler branches on controller.cron:
+  //   */15 * * * *  -> pull NASA FIRMS hotspots (near real time)
+  //   0 * * * *     -> pull Open-Meteo fire weather (hourly)
+  "triggers": { "crons": ["*/15 * * * *", "0 * * * *"] },
+
+  "vars": { "REGION": "aragon" },
+
+  // --- Bindings ---------------------------------------------------------
+  // The *_id values are placeholders. Create the resources once and paste
+  // the returned ids here (see README "One-time setup").
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "geospatial-db",
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "kv_namespaces": [
+    { "binding": "CONFIG", "id": "REPLACE_WITH_KV_ID" }
+  ],
+
+  "r2_buckets": [
+    { "binding": "RAW", "bucket_name": "geospatial-raw" }
+  ],
+
+  // Custom domain. Requires the zone `diegoromero.es` on this Cloudflare
+  // account; the first `wrangler deploy` provisions the hostname + cert.
+  "routes": [
+    { "pattern": "geospatial-platform.diegoromero.es", "custom_domain": true }
+  ]
+}
