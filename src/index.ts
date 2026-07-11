@@ -194,6 +194,7 @@ export default {
     const job =
       controller.cron === "0 12 * * *" ? runFwi(env)
       : controller.cron === "0 */3 * * *" ? runWeather(env)
+      : controller.cron === "25 0,6,12,18 * * *" ? runLightningAemet(env)
       : runFirms(env);
     ctx.waitUntil(job.catch((err) => console.error("scheduled error:", err)));
   },
