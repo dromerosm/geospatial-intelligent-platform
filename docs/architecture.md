@@ -78,7 +78,7 @@ at another region is a one-file edit (plus rebuilding the Digital Twin).
 | Feed | Source | Cadence | Auth | Notes |
 |------|--------|---------|------|-------|
 | Hotspots | NASA FIRMS VIIRS_SNPP_NRT (Area CSV API) | 15 min | free map key | 375 m nominal resolution |
-| Fire weather | Open-Meteo current | hourly | none | grid-sampled, Triple-30 flagged |
+| Fire weather | Open-Meteo current + 3-day hourly forecast | hourly | none | 225-point grid (~15 km) in one bulk call; Triple-30 + `forecast_json` per point |
 
 ## 7. Digital Twin build (Phase 2)
 
@@ -146,7 +146,9 @@ Design choices:
 ## Open items
 
 - Fuel-moisture proxy is a placeholder (relative humidity); replace with an EFFIS/FWI
-  component.
-- Weather is grid-sampled (9 points); per-cell interpolation is a later refinement.
+  component. Drought indicators are also still pending.
+- Fire weather is sampled at 225 points (~15 km) with a 3-day hourly forecast per point
+  (`fire_weather.forecast_json`). Phase 3 resolves the nearest sample to a detection's cell;
+  a denser grid would need >1 bulk call (the GET URL caps at ~500 coords / HTTP 414).
 - Fuel class from CLC is a coarse mapping; a fire-behaviour fuel model (e.g. Scott &
   Burgan / Prometheus) could refine it later.

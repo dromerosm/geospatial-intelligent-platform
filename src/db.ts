@@ -25,17 +25,18 @@ export async function upsertFireWeather(env: Env, rows: FireWeather[]): Promise<
   if (rows.length === 0) return 0;
   const stmt = env.DB.prepare(
     `INSERT INTO fire_weather
-       (h3_cell, updated_at, temp_c, rh_pct, wind_kmh, wind_dir_deg, rain_mm, fuel_moisture_proxy, triple30)
-     VALUES (?,?,?,?,?,?,?,?,?)
+       (h3_cell, updated_at, temp_c, rh_pct, wind_kmh, wind_dir_deg, rain_mm, fuel_moisture_proxy, triple30, forecast_json)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(h3_cell) DO UPDATE SET
        updated_at=excluded.updated_at, temp_c=excluded.temp_c, rh_pct=excluded.rh_pct,
        wind_kmh=excluded.wind_kmh, wind_dir_deg=excluded.wind_dir_deg, rain_mm=excluded.rain_mm,
-       fuel_moisture_proxy=excluded.fuel_moisture_proxy, triple30=excluded.triple30`,
+       fuel_moisture_proxy=excluded.fuel_moisture_proxy, triple30=excluded.triple30,
+       forecast_json=excluded.forecast_json`,
   );
   const batch = rows.map((r) =>
     stmt.bind(
       r.h3Cell, r.updatedAt, r.tempC, r.rhPct, r.windKmh, r.windDirDeg, r.rainMm,
-      r.fuelMoistureProxy, r.triple30,
+      r.fuelMoistureProxy, r.triple30, r.forecastJson,
     ),
   );
   await env.DB.batch(batch);
@@ -61,10 +62,18 @@ export async function recentObservations(env: Env, limit = 100) {
 }
 
 export async function currentFireWeather(env: Env) {
+  // Exclude forecast_json — 225 rows × a 3-day series would be a heavy response.
   const { results } = await env.DB.prepare(
-    `SELECT * FROM fire_weather ORDER BY updated_at DESC`,
+    `SELECT h3_cell, updated_at, temp_c, rh_pct, wind_kmh, wind_dir_deg, rain_mm,
+            fuel_moisture_proxy, triple30
+       FROM fire_weather ORDER BY updated_at DESC`,
   ).all();
   return results;
+}
+
+/** Full fire weather (incl. the 3-day forecast) for one sample cell. */
+export async function fireWeatherCell(env: Env, cell: string) {
+  return env.DB.prepare(`SELECT * FROM fire_weather WHERE h3_cell = ?`).bind(cell).first();
 }
 
 /** Digital Twin coverage summary (for verifying the Phase 2 batch build). */

@@ -6,7 +6,7 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { currentFireWeather, digitalTwinCell, digitalTwinStats, insertObservations, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
+import { currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, insertObservations, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { fetchFireWeather } from "./ingest/weather.js";
 import type { Env } from "./types.js";
@@ -127,8 +127,11 @@ export default {
         return json({ ok: true, service: "geospatial-platform", region: env.REGION });
       case "/observations":
         return json(await recentObservations(env));
-      case "/fire-weather":
-        return json(await currentFireWeather(env));
+      case "/fire-weather": {
+        // ?cell=<h3> returns one sample's full row incl. 3-day forecast.
+        const cell = url.searchParams.get("cell");
+        return json(cell ? await fireWeatherCell(env, cell) : await currentFireWeather(env));
+      }
       case "/digital-twin": {
         // ?cell=<h3> returns one cell's context; otherwise coverage stats.
         const cell = url.searchParams.get("cell");

@@ -41,4 +41,6 @@ export interface FireWeather {
   rainMm: number;
   fuelMoistureProxy: number;
   triple30: 0 | 1;
+  /** Compact 3-day hourly forecast (Open-Meteo) as JSON. */
+  forecastJson: string;
 }
