@@ -89,13 +89,23 @@ en `/mapa`, no en `.pages.dev`/local, donde degradan sin romper):
 
 ### Meteo — pendiente para el futuro
 
-- **Campo Temp / HR**: `/fire-weather` ya trae `temp_c` y `rh_pct` por punto; se podrían
-  pintar como puntos coloreados o un campo interpolado (coarse, ~213 nodos).
-- **Previsión a 3 días (hover)**: la ingesta guarda `forecast_json` (72 pasos horarios)
-  por punto, pero `currentFireWeather` lo **excluye** de `/fire-weather` (~213 filas × 72
-  pasos = respuesta pesada). Para un sparkline de 3 días al pinchar un punto haría falta
-  un endpoint pequeño en el Worker, p. ej. `GET /fire-weather?cell=<h3>` que devuelva el
-  `forecast_json` de ese punto (cambio mínimo + deploy del Worker).
+La CAPA **Temperatura** (aire 2 m, relleno nearest-neighbor) ya está — ver la sección de
+capas. Ideas para mejorarla o extenderla, por orden de valor:
+
+- **Corrección por altitud (*lapse rate*)** — es el límite de calidad real, no NN vs IDW.
+  El NN por distancia horizontal ignora la cota; en montaña (Pirineo/Ibérica) puede sesgar.
+  Exponiendo la elevación por celda en el GeoJSON (el twin ya la tiene) y guardando la cota
+  de cada punto de meteo, un IDW + corrección de ~6,5 °C/km daría un campo más fiel. En la
+  práctica el sesgo hoy es suave porque las muestras de Open-Meteo ya llevan su altitud.
+- **CAPA "Peligro (FWI)"** — `/fire-weather` ya devuelve `ffmc`, `dc`, `fwi` (índices
+  canadienses de peligro) por punto. Una capa con el **mismo relleno NN** coloreada por
+  `fwi` sería más on-theme que la temperatura cruda (integra temp, HR, viento y lluvia).
+- **Otras variables como campo** (HR, viento) — mismo patrón NN sobre `rh_pct` / `wind_kmh`.
+- **Previsión a 3 días (hover)** — la ingesta guarda `forecast_json` (72 pasos horarios) por
+  punto, pero `currentFireWeather` lo **excluye** de `/fire-weather` (~213 filas × 72 pasos =
+  respuesta pesada). Para un sparkline al pinchar un punto haría falta un endpoint pequeño,
+  p. ej. `GET /fire-weather?cell=<h3>` que devuelva el `forecast_json` de ese punto (cambio
+  mínimo + deploy del Worker).
 
 ## Uso
 
