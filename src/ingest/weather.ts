@@ -1,24 +1,21 @@
-// Fire-weather ingestion from Open-Meteo (free, no API key). We sample a grid
-// over the bbox and fetch, in a single bulk call (comma-separated coordinates),
-// both current conditions and a 3-day hourly forecast for each point. Each point
-// is mapped to its H3 cell; Phase 3 resolves the nearest point to a detection.
-import { ARAGON_BBOX, TRIPLE30, WEATHER_GRID_STEPS } from "../config.js";
+// Fire-weather ingestion from Open-Meteo (free, no API key). Sample points are a
+// surface-uniform grid clipped to the Aragón boundary (src/weather-points.json,
+// built by scripts/build-weather-grid.mjs). For each point we fetch current
+// conditions + a 3-day hourly forecast in bulk (comma-separated coordinates),
+// chunked to keep each GET URL under the server's ~8 KB limit. Each point is
+// mapped to its H3 cell; Phase 3 resolves the nearest point to a detection.
+import { TRIPLE30 } from "../config.js";
 import { cellFor } from "../lib/h3.js";
 import type { FireWeather } from "../types.js";
+import WEATHER_POINTS from "../weather-points.json";
 
-/** Evenly spaced sample points across the bbox. */
-export function weatherGrid(steps = WEATHER_GRID_STEPS): { lat: number; lng: number }[] {
-  const { west, south, east, north } = ARAGON_BBOX;
-  const pts: { lat: number; lng: number }[] = [];
-  for (let i = 0; i < steps; i++) {
-    for (let j = 0; j < steps; j++) {
-      const lat = south + ((north - south) * (i + 0.5)) / steps;
-      const lng = west + ((east - west) * (j + 0.5)) / steps;
-      pts.push({ lat, lng });
-    }
-  }
-  return pts;
+/** ~8 km surface-uniform sample points, all inside Aragón. */
+export function weatherGrid(): { lat: number; lng: number }[] {
+  return WEATHER_POINTS as { lat: number; lng: number }[];
 }
+
+/** Max coordinates per Open-Meteo GET call (URL length ~8 KB caps at ~500). */
+const BULK_CHUNK = 400;
 
 /**
  * Placeholder fuel-moisture proxy in [0,1] (higher = moister/safer). v1 uses
@@ -32,18 +29,23 @@ const round1 = (a: number[]): number[] => a.map((v) => Math.round(v * 10) / 10);
 
 export async function fetchFireWeather(updatedAt: string): Promise<FireWeather[]> {
   const grid = weatherGrid();
-  const lats = grid.map((p) => p.lat.toFixed(3)).join(",");
-  const lngs = grid.map((p) => p.lng.toFixed(3)).join(",");
   const vars = "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation";
-  const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}` +
-    `&current=${vars}&hourly=${vars}&forecast_days=3&wind_speed_unit=kmh`;
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo ${res.status}: ${await res.text()}`);
-  // Multiple coordinates -> array; single -> object. Normalise to array.
-  const body = await res.json<any>();
-  const items = Array.isArray(body) ? body : [body];
+  // Fetch in chunks (URL-length limit) and concatenate in order so items[idx]
+  // still lines up with grid[idx].
+  const items: any[] = [];
+  for (let i = 0; i < grid.length; i += BULK_CHUNK) {
+    const chunk = grid.slice(i, i + BULK_CHUNK);
+    const lats = chunk.map((p) => p.lat.toFixed(3)).join(",");
+    const lngs = chunk.map((p) => p.lng.toFixed(3)).join(",");
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lngs}` +
+      `&current=${vars}&hourly=${vars}&forecast_days=3&wind_speed_unit=kmh`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Open-Meteo ${res.status}: ${await res.text()}`);
+    const body = await res.json<any>();
+    items.push(...(Array.isArray(body) ? body : [body]));
+  }
 
   return items.map((item, idx) => {
     const c = item.current;

@@ -11,6 +11,7 @@
     "db:apply:local": "wrangler d1 migrations apply geospatial-db --local",
     "db:apply:remote": "wrangler d1 migrations apply geospatial-db --remote",
     "twin:build": "node scripts/build-digital-twin.mjs",
+    "weather:grid": "node scripts/build-weather-grid.mjs",
     "twin:apply:local": "wrangler d1 execute geospatial-db --local --file tmp/digital-twin.sql",
     "twin:apply:remote": "wrangler d1 execute geospatial-db --remote --file tmp/digital-twin.sql",
     "map:build": "node prototype/build-geojson.mjs",

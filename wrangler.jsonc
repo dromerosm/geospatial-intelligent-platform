@@ -12,8 +12,10 @@
 
   // Cron triggers. The scheduled() handler branches on controller.cron:
   //   */15 * * * *  -> pull NASA FIRMS hotspots (near real time)
-  //   0 * * * *     -> pull Open-Meteo fire weather (hourly)
-  "triggers": { "crons": ["*/15 * * * *", "0 * * * *"] },
+  //   0 */3 * * *   -> refresh the Open-Meteo fire-weather grid (every 3 h)
+  // Event-time weather is fetched on demand per detection (Phase 3), so the
+  // background grid does not need to refresh hourly.
+  "triggers": { "crons": ["*/15 * * * *", "0 */3 * * *"] },
 
   "vars": { "REGION": "aragon" },
 

@@ -6,7 +6,7 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, insertObservations, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
+import { currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, insertObservations, pruneFireWeather, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { fetchFireWeather } from "./ingest/weather.js";
 import type { Env } from "./types.js";
@@ -27,6 +27,7 @@ async function runWeather(env: Env): Promise<void> {
   const now = new Date().toISOString();
   const rows = await fetchFireWeather(now);
   const written = await upsertFireWeather(env, rows);
+  await pruneFireWeather(env, now); // drop points from any previous grid
   const triple30 = rows.filter((r) => r.triple30).length;
   await writeAudit(env, "ingest", { feed: "OPEN_METEO", cells: written, triple30 });
   console.log(`Weather: ${written} cells, ${triple30} in Triple-30`);
@@ -80,7 +81,7 @@ NASA FIRMS (hotspots), Open-Meteo (fire weather), INE Censo Anual 2025 (populati
 
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const job = controller.cron === "0 * * * *" ? runWeather(env) : runFirms(env);
+    const job = controller.cron === "0 */3 * * *" ? runWeather(env) : runFirms(env);
     ctx.waitUntil(job.catch((err) => console.error("scheduled error:", err)));
   },
 

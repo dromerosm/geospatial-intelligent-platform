@@ -21,12 +21,8 @@ export const FIRMS_NOMINAL_RESOLUTION_M = 375; // VIIRS I-band pixel
 export const FIRMS_CONFIDENCE: Record<string, number> = { l: 0.3, n: 0.6, h: 0.9 };
 
 // --- Fire weather -----------------------------------------------------------
-/**
- * Sampling grid over the bbox (points per axis). 15 -> 225 samples (~15 km),
- * fetched in a single Open-Meteo bulk call. Kept < ~500 so the GET URL stays
- * under the server's ~8 KB limit (600+ coords returns HTTP 414).
- */
-export const WEATHER_GRID_STEPS = 15;
+// Sample points are a surface-uniform grid clipped to Aragón, precomputed in
+// src/weather-points.json (scripts/build-weather-grid.mjs).
 
 /** Classic Triple-30 operational indicator (one signal, not the sole rule). */
 export const TRIPLE30 = { tempC: 30, windKmh: 30, rhPct: 30 } as const;

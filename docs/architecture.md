@@ -10,7 +10,7 @@ flowchart TB
   subgraph DYN["Dynamic sources · Cron"]
     direction LR
     FIRMS["NASA FIRMS<br/>hotspots · every 15 min"]
-    METEO["Open-Meteo<br/>fire-weather · every 1 h"]
+    METEO["Open-Meteo<br/>fire-weather · every 3 h"]
   end
   subgraph SRC["Digital Twin sources · batch, on demand"]
     direction LR
@@ -31,7 +31,7 @@ flowchart TB
   BR --> OPS["Map · API · Telegram"]
 ```
 
-Dynamic feeds refresh on Cron (FIRMS 15 min, weather hourly); the Digital Twin is a
+Dynamic feeds refresh on Cron (FIRMS 15 min, weather every 3 h); the Digital Twin is a
 batch rebuild run on demand. The deterministic engine is the only component that creates
 events; the LLM runs only above threshold. The same diagram is embedded on the landing
 page as a pre-rendered inline SVG (zero JS, so Lighthouse stays at 100).
@@ -78,7 +78,7 @@ at another region is a one-file edit (plus rebuilding the Digital Twin).
 | Feed | Source | Cadence | Auth | Notes |
 |------|--------|---------|------|-------|
 | Hotspots | NASA FIRMS VIIRS_SNPP_NRT (Area CSV API) | 15 min | free map key | 375 m nominal resolution |
-| Fire weather | Open-Meteo current + 3-day hourly forecast | hourly | none | 225-point grid (~15 km) in one bulk call; Triple-30 + `forecast_json` per point |
+| Fire weather | Open-Meteo current + 3-day hourly forecast | every 3 h | none | 213-point surface-uniform grid clipped to Aragón (~15 km), one bulk call; Triple-30 + `forecast_json` per point |
 
 ## 7. Digital Twin build (Phase 2)
 
@@ -147,8 +147,11 @@ Design choices:
 
 - Fuel-moisture proxy is a placeholder (relative humidity); replace with an EFFIS/FWI
   component. Drought indicators are also still pending.
-- Fire weather is sampled at 225 points (~15 km) with a 3-day hourly forecast per point
-  (`fire_weather.forecast_json`). Phase 3 resolves the nearest sample to a detection's cell;
-  a denser grid would need >1 bulk call (the GET URL caps at ~500 coords / HTTP 414).
+- Fire weather is a **surface-uniform ~15 km grid clipped to Aragón** (213 points,
+  `scripts/build-weather-grid.mjs` → `src/weather-points.json`), refreshed every 3 h with a
+  3-day hourly forecast per point (`fire_weather.forecast_json`). Background layer only:
+  Phase 3 fetches **exact event-time weather on demand** for a detection's cell (option B),
+  so the free Open-Meteo budget (~51k/month for the grid) leaves ample room for events.
+  A denser grid (>500 coords) would need chunked bulk calls (GET URL caps at ~8 KB / 414).
 - Fuel class from CLC is a coarse mapping; a fire-behaviour fuel model (e.g. Scott &
   Burgan / Prometheus) could refine it later.

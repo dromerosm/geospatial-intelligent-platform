@@ -43,6 +43,11 @@ export async function upsertFireWeather(env: Env, rows: FireWeather[]): Promise<
   return rows.length;
 }
 
+/** Drop fire-weather rows from previous grids (self-heal after a grid change). */
+export async function pruneFireWeather(env: Env, keepUpdatedAt: string): Promise<void> {
+  await env.DB.prepare(`DELETE FROM fire_weather WHERE updated_at <> ?`).bind(keepUpdatedAt).run();
+}
+
 export async function writeAudit(env: Env, stage: string, detail: unknown): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO audit_log (id, at, stage, event_id, detail_json) VALUES (?,?,?,?,?)`,
