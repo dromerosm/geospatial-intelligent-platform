@@ -51,14 +51,19 @@ Migrations are append-only and tracked by wrangler; already-applied files are sk
 
 ## Rebuilding the Digital Twin (Phase 2)
 
-A one-off batch job — re-run only when the region or its data sources change. Takes
-~15–20 min (Open-Meteo elevation is rate-limited; the script paces itself).
+A one-off batch job — re-run only when the region or its data sources change. Pulls
+elevation (Open-Elevation, checkpointed to `tmp/elevations.json`), INE census-section
+population (2025) and OSM assets. First run ~10–15 min (elevation); re-runs are fast
+because elevation is cached.
 
 ```bash
 npm run twin:build           # -> tmp/digital-twin.sql (~9.4k cells for Aragón)
 npm run twin:apply:remote    # apply to production D1 (idempotent, INSERT OR REPLACE)
 # npm run twin:apply:local   # same against the local dev DB
 ```
+
+When the schema changes (e.g. new columns), apply pending migrations first:
+`npm run db:apply:remote`.
 
 Verify:
 

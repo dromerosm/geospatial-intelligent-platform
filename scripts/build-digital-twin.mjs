@@ -1,25 +1,34 @@
 // Phase 2 — Digital Twin batch build (build-time, NOT runtime).
 //
 // Enumerates the H3 res-7 cells covering Aragón and enriches each with:
-//   - terrain: elevation -> steepest-descent slope + aspect  (Open-Meteo, real)
-//   - infrastructure: distance to nearest critical asset      (OSM Overpass, best-effort)
-//   - population_nearby: population of settlements within 10 km (OSM, best-effort)
+//   - terrain: elevation -> steepest-descent slope + aspect  (Open-Elevation, real)
+//   - population + population_density: INE Censo Anual 2025 by census section,
+//     areally interpolated to H3 via res-9 subcells (authoritative, ref 1-Jan-2025)
+//   - dist_asset_m: distance to nearest OSM asset (fire station, substation,
+//     settlement) via Overpass (best-effort)
 //
 // land_cover / fuel_type / hist_fire_flag are left NULL in v1 (see docs/architecture.md).
 //
-// Output: SQL (INSERT OR REPLACE) written to the path in --out (default tmp/digital-twin.sql).
+// Output: SQL (INSERT OR REPLACE) written to --out (default tmp/digital-twin.sql).
 // Apply with:  wrangler d1 execute geospatial-db --remote --file tmp/digital-twin.sql
 //
 // Usage: node scripts/build-digital-twin.mjs [--out tmp/digital-twin.sql]
 
-import { cellToLatLng, gridDisk, polygonToCells } from "h3-js";
+import { cellArea, cellToLatLng, cellToParent, gridDisk, latLngToCell, polygonToCells } from "h3-js";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const RES = 7; // must match src/config.ts H3_RESOLUTION (observations are indexed at res 7)
-const POP_RADIUS_M = 10_000;
+const INTERP_RES = 9; // subcell resolution for areal population interpolation (~0.1 km²)
 const OUT = argValue("--out") ?? "tmp/digital-twin.sql";
 const UA = "geospatial-platform/0.1 (https://github.com/dromerosm/geospatial-intelligent-platform)";
+
+// INE OGC API Features — census-section geometry (2025 vintage).
+const INE_OGC = "https://www.ine.es/geoserver/ogc/features/v1/collections";
+const SECTIONS_COLLECTION = "WMS_INE_SECCIONES_G01:Secciones_2025";
+// INE Censo Anual jaxiT3 section tables, one per Aragón province (CSV download).
+const INE_POP_TABLES = { Huesca: 69193, Zaragoza: 69289, Teruel: 69345 };
+const CENSUS_YEAR = "2025";
 
 const R = 6_371_000;
 const toRad = (d) => (d * Math.PI) / 180;
@@ -80,8 +89,6 @@ function bboxOf(geojson) {
 }
 
 // --- 2. Terrain (Open-Elevation, bulk POST, checkpointed) -------------------
-// Open-Elevation accepts large POST batches with no hourly cap. We checkpoint to
-// tmp/elevations.json so the build is resumable and re-runs are near-free.
 const ELEV_CACHE = "tmp/elevations.json";
 const ELEV_CHUNK = 200;
 
@@ -147,7 +154,80 @@ function terrain(cell, elev) {
   };
 }
 
-// --- 3. Infrastructure (OSM Overpass, best-effort) --------------------------
+// --- 3. Population (INE Censo Anual 2025, by census section) -----------------
+// Geometry from the INE OGC API; population from the per-province jaxiT3 tables;
+// areally interpolated onto H3 res-7 cells through res-9 subcells.
+async function fetchSections() {
+  const enc = encodeURIComponent(SECTIONS_COLLECTION);
+  const filter = encodeURIComponent("CCA='02' AND TIPO='SECCIONADO'"); // 02 = Aragón
+  const url =
+    `${INE_OGC}/${enc}/items?f=application/json&limit=3000` +
+    `&filter-lang=cql2-text&filter=${filter}`;
+  const res = await fetch(url, { headers: { "User-Agent": UA } });
+  if (!res.ok) throw new Error(`INE OGC ${res.status}`);
+  const fc = await res.json();
+  return fc.features; // GeoJSON (CRS84 lon/lat), properties.CUSEC
+}
+
+async function fetchSectionPopulation() {
+  const pop = new Map();
+  for (const [prov, id] of Object.entries(INE_POP_TABLES)) {
+    const res = await fetch(`https://www.ine.es/jaxiT3/files/t/es/csv_bdsc/${id}.csv`);
+    if (!res.ok) throw new Error(`INE table ${id} (${prov}) ${res.status}`);
+    const text = await res.text();
+    let count = 0;
+    for (const line of text.split("\n")) {
+      const col = line.split(";");
+      // Provincias;Municipios;Secciones;Sexo;Edad;Periodo;Total
+      if (col.length < 7 || !col[2]) continue;
+      if (col[3] !== "Total" || col[4] !== "Todas las edades" || col[5] !== CENSUS_YEAR) continue;
+      const cusec = col[2].split(" ")[0];
+      const value = col[6].replace(/\./g, "").replace(/"/g, "").trim();
+      pop.set(cusec, value === "" ? 0 : Number(value));
+      count++;
+    }
+    console.error(`  ${prov} (table ${id}): ${count} sections`);
+  }
+  return pop;
+}
+
+function ringCentroid(ring) {
+  let lng = 0, lat = 0;
+  for (const [x, y] of ring) { lng += x; lat += y; }
+  return [lng / ring.length, lat / ring.length];
+}
+
+// Distribute each section's population over the H3 res-7 cells it covers,
+// weighted by area via equal-area res-9 subcells.
+function populationByCell(sections, popMap) {
+  const pop7 = new Map();
+  let matched = 0, unmatched = 0, assigned = 0;
+  for (const f of sections) {
+    const pop = popMap.get(f.properties.CUSEC);
+    if (pop == null) { unmatched++; continue; }
+    matched++;
+    const polys = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [f.geometry.coordinates];
+    const children = new Set();
+    for (const poly of polys) for (const h of polygonToCells(poly, INTERP_RES, true)) children.add(h);
+    if (children.size === 0) {
+      const [lng, lat] = ringCentroid(polys[0][0]);
+      const c7 = latLngToCell(lat, lng, RES);
+      pop7.set(c7, (pop7.get(c7) ?? 0) + pop);
+      assigned += pop;
+      continue;
+    }
+    const share = pop / children.size;
+    for (const child of children) {
+      const parent = cellToParent(child, RES);
+      pop7.set(parent, (pop7.get(parent) ?? 0) + share);
+    }
+    assigned += pop;
+  }
+  console.error(`  sections matched: ${matched}, unmatched: ${unmatched}, population distributed: ${Math.round(assigned)}`);
+  return pop7;
+}
+
+// --- 4. Infrastructure (OSM Overpass, best-effort) --------------------------
 async function osmAssets(bbox) {
   const bb = `${bbox.s},${bbox.w},${bbox.n},${bbox.e}`;
   const query = `[out:json][timeout:180];
@@ -158,7 +238,7 @@ async function osmAssets(bbox) {
   way["power"="substation"](${bb});
   node["place"~"^(city|town|village)$"](${bb});
 );
-out center tags;`;
+out center;`;
   const res = await fetch("https://overpass-api.de/api/interpreter", {
     method: "POST",
     headers: { "Content-Type": "text/plain", "User-Agent": UA },
@@ -167,32 +247,26 @@ out center tags;`;
   if (!res.ok) throw new Error(`Overpass ${res.status}`);
   const data = await res.json();
   const assets = [];
-  const settlements = [];
   for (const el of data.elements) {
     const lat = el.lat ?? el.center?.lat;
     const lng = el.lon ?? el.center?.lon;
-    if (lat == null || lng == null) continue;
-    assets.push([lat, lng]);
-    const pop = Number.parseInt(el.tags?.population ?? "", 10);
-    if (Number.isFinite(pop)) settlements.push({ pt: [lat, lng], pop });
+    if (lat != null && lng != null) assets.push([lat, lng]);
   }
-  return { assets, settlements };
+  return assets;
 }
 
-function distAndPop(cell, assets, settlements) {
-  if (assets.length === 0) return { distAssetM: null, popNearby: null };
+function nearestAsset(cell, assets) {
+  if (assets.length === 0) return null;
   const c = cellToLatLng(cell);
   let nearest = Infinity;
   for (const a of assets) {
     const d = haversine(c, a);
     if (d < nearest) nearest = d;
   }
-  let pop = 0;
-  for (const s of settlements) if (haversine(c, s.pt) <= POP_RADIUS_M) pop += s.pop;
-  return { distAssetM: Math.round(nearest), popNearby: pop };
+  return Math.round(nearest);
 }
 
-// --- 4. Emit SQL ------------------------------------------------------------
+// --- 5. Emit SQL ------------------------------------------------------------
 function toSql(rows) {
   const num = (v) => (v == null ? "NULL" : v);
   const lines = ["-- Digital Twin for Aragón (generated by scripts/build-digital-twin.mjs)"];
@@ -202,12 +276,12 @@ function toSql(rows) {
       .map(
         (r) =>
           `('${r.cell}',NULL,NULL,${num(r.slopeDeg)},${num(r.aspectDeg)},` +
-          `${num(r.popNearby)},${num(r.distAssetM)},0)`,
+          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},0)`,
       )
       .join(",");
     lines.push(
       "INSERT OR REPLACE INTO digital_twin_cell " +
-        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population_nearby,dist_asset_m,hist_fire_flag) " +
+        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag) " +
         `VALUES ${values};`,
     );
   }
@@ -218,35 +292,43 @@ function toSql(rows) {
 async function main() {
   const boundary = await aragonBoundary();
   const cells = cellsForBoundary(boundary);
+  const cellSet = new Set(cells);
   console.error(`Cells (H3 res ${RES}): ${cells.length}`);
 
   console.error("Fetching elevation...");
   const elev = await elevations(cells);
 
+  console.error("Fetching INE census sections + population...");
+  const sections = await fetchSections();
+  console.error(`  sections (geometry): ${sections.length}`);
+  const popMap = await fetchSectionPopulation();
+  const pop7 = populationByCell(sections, popMap);
+
   let assets = [];
-  let settlements = [];
   try {
     console.error("Fetching OSM assets (Overpass)...");
-    ({ assets, settlements } = await osmAssets(bboxOf(boundary)));
-    console.error(`  assets: ${assets.length}, settlements w/ population: ${settlements.length}`);
+    assets = await osmAssets(bboxOf(boundary));
+    console.error(`  assets: ${assets.length}`);
   } catch (err) {
-    console.error(`  Overpass failed (${err.message}) — infra fields left NULL`);
+    console.error(`  Overpass failed (${err.message}) — dist_asset_m left NULL`);
   }
 
   const rows = cells.map((cell) => {
     const t = terrain(cell, elev);
-    const dp = distAndPop(cell, assets, settlements);
-    return { cell, ...t, ...dp };
+    const population = Math.round(pop7.get(cell) ?? 0);
+    const density = Math.round((population / cellArea(cell, "km2")) * 10) / 10;
+    return { cell, ...t, population, density, distAssetM: nearestAsset(cell, assets) };
   });
 
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, toSql(rows));
 
-  const withInfra = rows.filter((r) => r.distAssetM != null).length;
+  const totalPop = rows.reduce((s, r) => s + r.population, 0);
   console.error(
     `\nDone. ${rows.length} cells -> ${OUT}\n` +
-      `  slope populated: ${rows.filter((r) => r.slopeDeg != null).length}\n` +
-      `  infra populated: ${withInfra}`,
+      `  slope populated:      ${rows.filter((r) => r.slopeDeg != null).length}\n` +
+      `  population in cells:   ${totalPop}\n` +
+      `  infra (dist) populated: ${rows.filter((r) => r.distAssetM != null).length}`,
   );
 }
 

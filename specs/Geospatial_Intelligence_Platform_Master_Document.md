@@ -34,7 +34,7 @@ The goal is a **fast, relevant, shippable MVP**, not the full platform. Everythi
 
 ### Confirmed decisions (v1)
 
-1. **Region:** **Aragón** (Spain). For the Digital Twin preload this means IGN/CNIG land cover (SIOSE/CORINE), MDT25 DEM (→ slope/aspect), INE population grid, and OSM/IGN infrastructure clipped to the Aragón boundary.
+1. **Region:** **Aragón** (Spain). Digital Twin preload sources: elevation→slope (Open-Elevation), **population + density from the original INE Censo Anual 2025 by census section** (geometry via INE OGC API, population via the per-province jaxiT3 tables, areally interpolated to H3), OSM infrastructure for distance-to-asset, and land cover / fuel (CORINE/EFFIS) deferred to Phase 2.1 — all clipped to the Aragón boundary.
 2. **LLM provider:** **OpenAI via Cloudflare AI Gateway** — `gpt-5.5-terra` for briefings, `gpt-5-nano` for cheap pre-classification. *(Provider chosen for v1 economics; the reasoning layer is provider-agnostic — AI Gateway lets us swap to Claude when we scale, no app change.)*
 3. **Primary alert channel:** **Telegram** (bot + webhook).
 
@@ -76,7 +76,7 @@ An **offline, precomputed** geospatial knowledge base, **indexed by H3 cell** (n
 **v1 stores 4 layers per cell** (not the full 18):
 
 - **Static ignition context** — land cover / fuel type, elevation→slope, historical-fire flag (if available).
-- **Exposure context** — estimated population nearby, distance to nearest critical asset (settlement, road, power line, substation, fire station, water source).
+- **Exposure context** — resident population & density (INE Censo Anual 2025, by census section), distance to nearest critical asset (settlement, road, power line, substation, fire station, water source).
 - **Dynamic fire-weather** (updated per ingestion, not static) — temperature, RH, wind speed/direction, rainfall, a drought/fuel-moisture proxy.
 
 The classic **Triple-30** heuristic (T >30 °C, wind >30 km/h, RH <30 %) is one operational indicator, **not** the sole criterion.
@@ -195,7 +195,8 @@ CREATE TABLE digital_twin_cell (
   fuel_type       TEXT,
   slope_deg       REAL,
   aspect_deg      REAL,
-  population_nearby INTEGER,
+  population        INTEGER,        -- resident population in cell (INE 2025)
+  population_density REAL,           -- people/km²
   dist_asset_m    INTEGER,                 -- nearest critical asset
   hist_fire_flag  INTEGER DEFAULT 0
 );
@@ -244,7 +245,7 @@ Weighted sum of **named contributions**, each written to `score_breakdown_json`:
 | `source_confidence` | feed-reported confidence | respects the sensor |
 | `fire_weather` | Triple-30 + fuel-moisture proxy | conditions favour spread |
 | `fuel_terrain` | fuel type × slope from Digital Twin | susceptibility |
-| `exposure` | population_nearby, dist_asset_m | operational priority |
+| `exposure` | population_density, dist_asset_m | operational priority |
 
 `det_score` = Σ(weight × contribution); weights live in **KV** (tunable without redeploy). If `det_score < threshold` → no event, but write an `audit_log` row (transparency about non-events). Clustering merges detections within an H3 k-ring into one event.
 

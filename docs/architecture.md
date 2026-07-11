@@ -57,20 +57,38 @@ plus native `fetch`; distance/bearing are inline haversine.
 | Field | Source | Status |
 |-------|--------|--------|
 | cell set | Nominatim boundary of Aragón → `h3.polygonToCells` (res 7, ~9.4k cells) | real |
-| `slope_deg`, `aspect_deg` | Open-Meteo Elevation → steepest-descent over the H3 neighbourhood | real |
+| `slope_deg`, `aspect_deg` | Open-Elevation → steepest-descent over the H3 neighbourhood | real |
+| `population`, `population_density` | **INE Censo Anual 2025** by census section (ref 1-Jan-2025), areally interpolated to H3 | real, authoritative |
 | `dist_asset_m` | nearest OSM asset (fire station, substation, settlement) via Overpass | real, best-effort |
-| `population_nearby` | Σ population of OSM settlements within 10 km | real, best-effort |
 | `land_cover`, `fuel_type`, `hist_fire_flag` | — | **NULL in v1** (Phase 2.1: CORINE/EFFIS raster sampling) |
+
+### Population: INE Censo Anual 2025 (authoritative)
+
+Population comes from the **original INE source**, not the Eurostat republication (which is
+the fixed 2021 census). Two INE endpoints, joined by the 10-digit `CUSEC` section code:
+
+- **Geometry** — INE OGC API Features (`Secciones_2025` collection, filter
+  `CCA='02' AND TIPO='SECCIONADO'`) → 1,463 Aragón census sections as GeoJSON. No shapefile parsing.
+- **Population** — INE Censo Anual jaxiT3 CSV tables, one per Aragón province (Huesca 69193,
+  Zaragoza 69289, Teruel 69345), filtered to `Total / Todas las edades / 2025`. Total ≈ 1.36 M
+  (matches the official Aragón figure).
+
+**Areal interpolation to H3**: each section polygon is discretised into equal-area H3 res-9
+subcells (~0.1 km²); its population is split evenly across them and re-aggregated to the res-7
+parent cells. This handles both large rural sections (spread across many cells) and dense urban
+sections (many sections per cell). `population_density` = population / cell area (people/km²).
+Sections with <50 residents are suppressed by INE (statistical secrecy) and count as 0.
 
 Design choices:
 
 - **Res 7 is mandatory**, not a tuning knob: observations are indexed at res 7
   (`src/config.ts`), so the twin must match for the cell-key join to work.
-- **Terrain is guaranteed; OSM is best-effort** — if Overpass fails, cells still get
-  terrain and the infra fields stay NULL. Phase 3 scoring must treat NULLs as neutral.
-- **Open-Meteo free tier is rate-limited by coordinate weight** (~600/min); the build
-  paces ~100 coords / 11 s with 60 s back-off on 429, so a full build takes ~15–20 min.
-  This is a one-off batch, re-run only when the region or sources change.
+- **Terrain + population are authoritative; OSM (dist_asset_m) is best-effort** — if
+  Overpass fails, cells still get terrain and population; only `dist_asset_m` stays NULL.
+  Phase 3 scoring must treat NULLs as neutral.
+- **Elevation via Open-Elevation** (bulk POST, no hourly cap), checkpointed to
+  `tmp/elevations.json` so re-runs are near-free. (Open-Meteo's elevation API was dropped:
+  its free tier hourly limit can't cover ~9.4k points in one run.)
 - Slope is a **cell-scale** value (gradient over the ~1.4 km res-7 neighbourhood), not
   slope at a point — consistent with the platform's precision-honesty principle.
 

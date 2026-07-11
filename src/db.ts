@@ -76,7 +76,9 @@ export async function digitalTwinStats(env: Env) {
        COUNT(dist_asset_m)                          AS with_infra,
        ROUND(AVG(slope_deg), 2)                     AS avg_slope_deg,
        MAX(slope_deg)                               AS max_slope_deg,
-       ROUND(AVG(population_nearby), 0)             AS avg_population_nearby
+       SUM(population)                              AS total_population,
+       ROUND(AVG(population_density), 1)            AS avg_density_km2,
+       ROUND(MAX(population_density), 1)            AS max_density_km2
      FROM digital_twin_cell`,
   ).all();
   return results[0] ?? { cells: 0 };

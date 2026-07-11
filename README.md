@@ -44,9 +44,9 @@ docs/             Architecture notes
 
 - Every 15 min: FIRMS VIIRS hotspots for Aragón → normalised → D1 (`observation`), raw CSV → R2.
 - Hourly: Open-Meteo fire weather sampled over a grid → D1 (`fire_weather`), Triple-30 flagged.
-- **Digital Twin**: ~9.4k H3 res-7 cells for Aragón with terrain (slope/aspect) and
-  infrastructure (distance-to-asset, nearby population). Built offline via
-  `npm run twin:build` (see [`docs/deploy.md`](docs/deploy.md)).
+- **Digital Twin**: ~9.4k H3 res-7 cells for Aragón with terrain (slope/aspect),
+  **authoritative population + density (INE Censo Anual 2025, by census section)** and
+  distance-to-asset. Built offline via `npm run twin:build` (see [`docs/deploy.md`](docs/deploy.md)).
 - Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`.
 - Every ingestion writes an `audit_log` row.
 
