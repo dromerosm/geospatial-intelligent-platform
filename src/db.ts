@@ -78,7 +78,8 @@ export async function digitalTwinStats(env: Env) {
        SUM(hist_fire_flag)                          AS hist_fire_cells,
        MAX(slope_deg)                               AS max_slope_deg,
        SUM(population)                              AS total_population,
-       ROUND(AVG(population_density), 1)            AS avg_density_km2,
+       SUM(pop_child)                              AS total_child_0_14,
+       SUM(pop_elderly)                            AS total_elderly_65plus,
        ROUND(MAX(population_density), 1)            AS max_density_km2
      FROM digital_twin_cell`,
   ).all();

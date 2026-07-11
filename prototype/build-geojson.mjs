@@ -23,6 +23,7 @@ const OUT = join(HERE, "data", "aragon-density.geojson");
 const COLUMNS = [
   "h3", "land_cover", "fuel_type", "slope_deg", "aspect_deg",
   "population", "density", "dist_asset_m", "hist_fire_flag", "municipio",
+  "pop_child", "pop_elderly",
 ];
 
 // Parse the SQL VALUES tuples. A hand tokenizer (not a regex) because string
@@ -60,10 +61,10 @@ const num = (s) => (val(s) == null ? null : Number(s));
 function main() {
   const sql = readFileSync(SQL_IN, "utf8");
   const features = [];
-  let densMin = Infinity, densMax = -Infinity, popTotal = 0, labelled = 0, fires = 0;
+  let densMin = Infinity, densMax = -Infinity, popTotal = 0, labelled = 0, fires = 0, elderTotal = 0;
 
   for (const f of parseTuples(sql)) {
-    const [h3, landCover, fuelType, slope, aspect, population, density, dist, hist, municipio] = f;
+    const [h3, landCover, fuelType, slope, aspect, population, density, dist, hist, municipio, child, elderly] = f;
     const pop = num(population) ?? 0;
     const dens = num(density) ?? 0;
     const [lat, lng] = cellToLatLng(h3);
@@ -78,6 +79,9 @@ function main() {
         slope_deg: num(slope),
         population: pop,
         density: dens,
+        pop_child: num(child) ?? 0,
+        pop_elderly: num(elderly) ?? 0,
+        pct_elderly: pop > 0 ? Math.round(((num(elderly) ?? 0) / pop) * 1000) / 10 : 0,
         dist_asset_m: num(dist),
         hist_fire: num(hist) ? 1 : 0,
         municipio: val(municipio),
@@ -89,6 +93,7 @@ function main() {
     densMin = Math.min(densMin, dens);
     densMax = Math.max(densMax, dens);
     popTotal += pop;
+    elderTotal += num(elderly) ?? 0;
   }
 
   if (features.length === 0) {
@@ -101,6 +106,7 @@ function main() {
       source: "Aragón Digital Twin (INE 2025 population, CORINE land cover, EFFIS fire history) at H3 res-7",
       cells: features.length,
       populationTotal: popTotal,
+      elderlyTotal: elderTotal,
       densityMin: densMin,
       densityMax: densMax,
       generatedFrom: "tmp/digital-twin.sql",
@@ -113,7 +119,8 @@ function main() {
       `  cells: ${features.length}\n` +
       `  with municipality: ${labelled} (${Math.round((labelled / features.length) * 100)}%)\n` +
       `  hist-fire cells: ${fires}\n` +
-      `  population (sum of cells): ${popTotal.toLocaleString("es-ES")}\n` +
+      `  population (sum of cells): ${popTotal.toLocaleString("es-ES")} ` +
+      `(elderly 65+: ${elderTotal.toLocaleString("es-ES")}, ${Math.round((elderTotal / popTotal) * 100)}%)\n` +
       `  density people/km²: min ${densMin}, max ${densMax}`,
   );
 }

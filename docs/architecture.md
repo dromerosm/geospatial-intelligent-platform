@@ -80,6 +80,12 @@ parent cells. This handles both large rural sections (spread across many cells) 
 sections (many sections per cell). `population_density` = population / cell area (people/km²).
 Sections with <50 residents are suppressed by INE (statistical secrecy) and count as 0.
 
+**Population at risk by age** — the same table carries five-year age bands (both sexes). We
+disaggregate the two dependency bands most relevant to wildfire evacuation and interpolate them
+to H3 the same way: `pop_child` (0-14) and `pop_elderly` (65+); adults (15-64) =
+`population − pop_child − pop_elderly`. For Aragón: 12.8% children, 22.6% elderly — an aged
+region where the elderly share is the key vulnerability signal for Phase 3 scoring/briefings.
+
 Design choices:
 
 - **Res 7 is mandatory**, not a tuning knob: observations are indexed at res 7

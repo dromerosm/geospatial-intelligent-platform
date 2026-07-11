@@ -76,7 +76,7 @@ An **offline, precomputed** geospatial knowledge base, **indexed by H3 cell** (n
 **v1 stores 4 layers per cell** (not the full 18):
 
 - **Static ignition context** — land cover / fuel type, elevation→slope, historical-fire flag (if available).
-- **Exposure context** — resident population & density (INE Censo Anual 2025, by census section), distance to nearest critical asset (settlement, road, power line, substation, fire station, water source).
+- **Exposure context** — resident population & density plus at-risk age bands (children 0-14, elderly 65+) from INE Censo Anual 2025 by census section, and distance to nearest critical asset (settlement, road, power line, substation, fire station, water source).
 - **Dynamic fire-weather** (updated per ingestion, not static) — temperature, RH, wind speed/direction, rainfall, a drought/fuel-moisture proxy.
 
 The classic **Triple-30** heuristic (T >30 °C, wind >30 km/h, RH <30 %) is one operational indicator, **not** the sole criterion.
@@ -197,6 +197,8 @@ CREATE TABLE digital_twin_cell (
   aspect_deg      REAL,
   population        INTEGER,        -- resident population in cell (INE 2025)
   population_density REAL,           -- people/km²
+  pop_child         INTEGER,        -- residents aged 0-14 (at-risk band)
+  pop_elderly       INTEGER,        -- residents aged 65+ (at-risk band)
   dist_asset_m    INTEGER,                 -- nearest critical asset
   hist_fire_flag  INTEGER DEFAULT 0
 );
@@ -245,7 +247,7 @@ Weighted sum of **named contributions**, each written to `score_breakdown_json`:
 | `source_confidence` | feed-reported confidence | respects the sensor |
 | `fire_weather` | Triple-30 + fuel-moisture proxy | conditions favour spread |
 | `fuel_terrain` | fuel type × slope from Digital Twin | susceptibility |
-| `exposure` | population_density, dist_asset_m | operational priority |
+| `exposure` | population_density, pop_elderly / pop_child, dist_asset_m | operational priority & vulnerability |
 
 `det_score` = Σ(weight × contribution); weights live in **KV** (tunable without redeploy). If `det_score < threshold` → no event, but write an `audit_log` row (transparency about non-events). Clustering merges detections within an H3 k-ring into one event.
 

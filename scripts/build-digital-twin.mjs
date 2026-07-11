@@ -2,8 +2,9 @@
 //
 // Enumerates the H3 res-7 cells covering Aragón and enriches each with:
 //   - terrain: elevation -> steepest-descent slope + aspect  (Open-Elevation, real)
-//   - population + population_density: INE Censo Anual 2025 by census section,
-//     areally interpolated to H3 via res-9 subcells (authoritative, ref 1-Jan-2025)
+//   - population + population_density + pop_child (0-14) + pop_elderly (65+):
+//     INE Censo Anual 2025 by census section (age bands, both sexes), areally
+//     interpolated to H3 via res-9 subcells (authoritative, ref 1-Jan-2025)
 //   - municipio: predominant municipality per cell (INE section NMUN/NPRO,
 //     majority of res-9 subcells) — labelling/context only, not a scoring input
 //   - land_cover + fuel_type: CORINE Land Cover 2018 (EEA Identify) -> fuel class
@@ -195,8 +196,17 @@ async function fetchSections() {
   return fc.features; // GeoJSON (CRS84 lon/lat), properties.CUSEC
 }
 
+// Lower bound of an INE five-year age label: "De 65 a 69 años" -> 65,
+// "100 y más años" -> 100, "Todas las edades" -> null.
+function ageBandLower(edad) {
+  const m = edad.match(/^De (\d+)/) ?? edad.match(/^(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+// Per section (both sexes): total plus the two dependency bands most relevant to
+// wildfire evacuation risk — children (0-14) and elderly (65+).
 async function fetchSectionPopulation() {
-  const pop = new Map();
+  const pop = new Map(); // CUSEC -> { total, child, elderly }
   for (const [prov, id] of Object.entries(INE_POP_TABLES)) {
     const res = await fetch(`https://www.ine.es/jaxiT3/files/t/es/csv_bdsc/${id}.csv`);
     if (!res.ok) throw new Error(`INE table ${id} (${prov}) ${res.status}`);
@@ -205,12 +215,17 @@ async function fetchSectionPopulation() {
     for (const line of text.split("\n")) {
       const col = line.split(";");
       // Provincias;Municipios;Secciones;Sexo;Edad;Periodo;Total
-      if (col.length < 7 || !col[2]) continue;
-      if (col[3] !== "Total" || col[4] !== "Todas las edades" || col[5] !== CENSUS_YEAR) continue;
+      if (col.length < 7 || !col[2]) continue; // section rows only
+      if (col[3] !== "Total" || col[5] !== CENSUS_YEAR) continue; // both sexes, 2025
       const cusec = col[2].split(" ")[0];
-      const value = col[6].replace(/\./g, "").replace(/"/g, "").trim();
-      pop.set(cusec, value === "" ? 0 : Number(value));
-      count++;
+      const v = Number(col[6].replace(/\./g, "").replace(/"/g, "").trim()) || 0;
+      let rec = pop.get(cusec);
+      if (!rec) { rec = { total: 0, child: 0, elderly: 0 }; pop.set(cusec, rec); count++; }
+      if (col[4] === "Todas las edades") { rec.total = v; continue; }
+      const lo = ageBandLower(col[4]);
+      if (lo == null) continue;
+      if (lo < 15) rec.child += v;
+      else if (lo >= 65) rec.elderly += v;
     }
     console.error(`  ${prov} (table ${id}): ${count} sections`);
   }
@@ -226,28 +241,30 @@ function ringCentroid(ring) {
 // Distribute each section's population over the H3 res-7 cells it covers,
 // weighted by area via equal-area res-9 subcells.
 function populationByCell(sections, popMap) {
-  const pop7 = new Map();
+  const pop7 = new Map(); // cell -> { total, child, elderly }
   let matched = 0, unmatched = 0, assigned = 0;
+  const add = (cell, rec, w) => {
+    let a = pop7.get(cell);
+    if (!a) { a = { total: 0, child: 0, elderly: 0 }; pop7.set(cell, a); }
+    a.total += rec.total * w;
+    a.child += rec.child * w;
+    a.elderly += rec.elderly * w;
+  };
   for (const f of sections) {
-    const pop = popMap.get(f.properties.CUSEC);
-    if (pop == null) { unmatched++; continue; }
+    const rec = popMap.get(f.properties.CUSEC);
+    if (rec == null) { unmatched++; continue; }
     matched++;
     const polys = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [f.geometry.coordinates];
     const children = new Set();
     for (const poly of polys) for (const h of polygonToCells(poly, INTERP_RES, true)) children.add(h);
     if (children.size === 0) {
       const [lng, lat] = ringCentroid(polys[0][0]);
-      const c7 = latLngToCell(lat, lng, RES);
-      pop7.set(c7, (pop7.get(c7) ?? 0) + pop);
-      assigned += pop;
-      continue;
+      add(latLngToCell(lat, lng, RES), rec, 1);
+    } else {
+      const w = 1 / children.size;
+      for (const child of children) add(cellToParent(child, RES), rec, w);
     }
-    const share = pop / children.size;
-    for (const child of children) {
-      const parent = cellToParent(child, RES);
-      pop7.set(parent, (pop7.get(parent) ?? 0) + share);
-    }
-    assigned += pop;
+    assigned += rec.total;
   }
   console.error(`  sections matched: ${matched}, unmatched: ${unmatched}, population distributed: ${Math.round(assigned)}`);
   return pop7;
@@ -424,12 +441,13 @@ function toSql(rows) {
       .map(
         (r) =>
           `('${r.cell}',${str(r.landCover)},${str(r.fuelType)},${num(r.slopeDeg)},${num(r.aspectDeg)},` +
-          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},${r.histFire},${str(r.municipio)})`,
+          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},${r.histFire},${str(r.municipio)},` +
+          `${num(r.popChild)},${num(r.popElderly)})`,
       )
       .join(",");
     lines.push(
       "INSERT OR REPLACE INTO digital_twin_cell " +
-        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag,municipio) " +
+        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag,municipio,pop_child,pop_elderly) " +
         `VALUES ${values};`,
     );
   }
@@ -475,7 +493,8 @@ async function main() {
 
   const rows = cells.map((cell) => {
     const t = terrain(cell, elev);
-    const population = Math.round(pop7.get(cell) ?? 0);
+    const p = pop7.get(cell) ?? { total: 0, child: 0, elderly: 0 };
+    const population = Math.round(p.total);
     const density = Math.round((population / cellArea(cell, "km2")) * 10) / 10;
     const lc = landCover.get(cell);
     return {
@@ -485,6 +504,8 @@ async function main() {
       fuelType: fuelFromCode(lc?.code ?? null),
       population,
       density,
+      popChild: Math.round(p.child),
+      popElderly: Math.round(p.elderly),
       distAssetM: nearestAsset(cell, assets),
       histFire: burnt.has(cell) ? 1 : 0,
       municipio: muni7.get(cell) ?? null,
@@ -494,13 +515,16 @@ async function main() {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, toSql(rows));
 
-  const totalPop = rows.reduce((s, r) => s + r.population, 0);
+  const sum = (f) => rows.reduce((s, r) => s + f(r), 0);
+  const totalPop = sum((r) => r.population);
+  const elderly = sum((r) => r.popElderly);
+  const child = sum((r) => r.popChild);
   console.error(
     `\nDone. ${rows.length} cells -> ${OUT}\n` +
       `  slope populated:      ${rows.filter((r) => r.slopeDeg != null).length}\n` +
       `  land cover populated: ${rows.filter((r) => r.landCover != null).length}\n` +
       `  municipio populated:  ${rows.filter((r) => r.municipio != null).length}\n` +
-      `  population in cells:   ${totalPop}\n` +
+      `  population in cells:   ${totalPop} (child 0-14: ${child}, elderly 65+: ${elderly})\n` +
       `  hist-fire cells:      ${rows.filter((r) => r.histFire).length}\n` +
       `  infra (dist) populated: ${rows.filter((r) => r.distAssetM != null).length}`,
   );
