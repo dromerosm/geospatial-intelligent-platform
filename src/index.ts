@@ -6,10 +6,12 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, recentObservations, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
+import { LIGHTNING_WATCH_HOURS } from "./config.js";
+import { activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { fetchFireWeather } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
+import { cellFor } from "./lib/h3.js";
 import type { Env } from "./types.js";
 import LANDING from "./landing.html";
 
@@ -58,6 +60,22 @@ async function runFwi(env: Env): Promise<void> {
   const n = await updateFwi(env, updates);
   await writeAudit(env, "fwi", { cells: n, month });
   console.log(`FWI: ${n} cells advanced`);
+}
+
+// Open/refresh a lightning watch on each strike's H3 cell, then prune expired
+// watches. Called by the (pluggable) lightning feed; strike times are ISO UTC.
+async function ingestLightning(env: Env, strikes: { lat: number; lng: number; at: string }[]): Promise<number> {
+  const now = new Date().toISOString();
+  const winMs = LIGHTNING_WATCH_HOURS * 3600_000;
+  const rows = strikes.map((s) => ({
+    cell: cellFor(s.lat, s.lng),
+    at: s.at,
+    expiresAt: new Date(new Date(s.at).getTime() + winMs).toISOString(),
+  }));
+  const n = await recordLightningStrikes(env, rows);
+  await pruneLightningWatch(env, now);
+  await writeAudit(env, "lightning", { strikes: n });
+  return n;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -135,7 +153,7 @@ export default {
     if (
       pathname === "/health" || pathname === "/observations" ||
       pathname === "/fire-weather" || pathname === "/digital-twin" ||
-      pathname.startsWith("/dev/")
+      pathname === "/lightning" || pathname.startsWith("/dev/")
     ) {
       const ip = req.headers.get("CF-Connecting-IP") ?? "anon";
       const { success } = await env.API_RL.limit({ key: ip });
@@ -178,6 +196,15 @@ export default {
       case "/dev/compute/fwi":
         await runFwi(env);
         return json({ ran: "fwi" });
+      case "/lightning":
+        return json(await activeLightningWatches(env, new Date().toISOString()));
+      case "/dev/lightning/test": {
+        // Inject one test strike (mechanism demo until a real feed is wired).
+        const lat = Number(url.searchParams.get("lat") ?? "41.65");
+        const lng = Number(url.searchParams.get("lng") ?? "-0.89");
+        const n = await ingestLightning(env, [{ lat, lng, at: new Date().toISOString() }]);
+        return json({ injected: n, cell: cellFor(lat, lng) });
+      }
       default:
         return json({ error: "not found" }, 404);
     }

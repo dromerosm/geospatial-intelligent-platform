@@ -68,6 +68,43 @@ export async function updateFwi(
   return rows.length;
 }
 
+// --- Lightning Watch --------------------------------------------------------
+export async function recordLightningStrikes(
+  env: Env,
+  rows: { cell: string; at: string; expiresAt: string }[],
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmt = env.DB.prepare(
+    `INSERT INTO lightning_watch (h3_cell, first_seen, last_strike, strike_count, expires_at)
+     VALUES (?,?,?,1,?)
+     ON CONFLICT(h3_cell) DO UPDATE SET
+       last_strike = MAX(last_strike, excluded.last_strike),
+       strike_count = strike_count + 1,
+       expires_at = MAX(expires_at, excluded.expires_at)`,
+  );
+  await env.DB.batch(rows.map((r) => stmt.bind(r.cell, r.at, r.at, r.expiresAt)));
+  return rows.length;
+}
+
+export async function pruneLightningWatch(env: Env, now: string): Promise<void> {
+  await env.DB.prepare(`DELETE FROM lightning_watch WHERE expires_at < ?`).bind(now).run();
+}
+
+export async function activeLightningWatches(env: Env, now: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM lightning_watch WHERE expires_at > ? ORDER BY last_strike DESC`,
+  ).bind(now).all();
+  return results;
+}
+
+/** Is there an active lightning watch on this cell? (correlation, Phase 3). */
+export async function hasActiveLightningWatch(env: Env, cell: string, now: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM lightning_watch WHERE h3_cell = ? AND expires_at > ? LIMIT 1`,
+  ).bind(cell, now).first();
+  return row != null;
+}
+
 export async function writeAudit(env: Env, stage: string, detail: unknown): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO audit_log (id, at, stage, event_id, detail_json) VALUES (?,?,?,?,?)`,

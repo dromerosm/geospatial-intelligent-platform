@@ -26,3 +26,7 @@ export const FIRMS_CONFIDENCE: Record<string, number> = { l: 0.3, n: 0.6, h: 0.9
 
 /** Classic Triple-30 operational indicator (one signal, not the sole rule). */
 export const TRIPLE30 = { tempC: 30, windKmh: 30, rhPct: 30 } as const;
+
+// --- Lightning Watch --------------------------------------------------------
+/** Monitoring window opened by a cloud-to-ground strike (spec: 24-72 h). */
+export const LIGHTNING_WATCH_HOURS = 48;

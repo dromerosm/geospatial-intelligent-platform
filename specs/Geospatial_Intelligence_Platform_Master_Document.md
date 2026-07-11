@@ -27,8 +27,7 @@ The goal is a **fast, relevant, shippable MVP**, not the full platform. Everythi
 
 ### Explicitly deferred (fast-follow, not v1)
 
-- Meteosat MTG and Copernicus operational products (harder access/auth; add once FIRMS+weather loop works).
-- Lightning Watch as a live feature (design is included below as a Durable Object; ship it when a lightning feed is wired).
+- **Data backlog** (noted for the future): the live **lightning feed** (mechanism is built — see Lightning Watch), extra Digital Twin **context layers** (protected areas, water, power lines, roads via OSM), **Meteosat MTG** and **Copernicus** operational products (harder access/auth), a real **fuel-load / Scott & Burgan fuel model**, and an FWI **historical spin-up** so drought codes are realistic immediately.
 - Multi-agent AI specialists, Teams/Email channels, multi-region, other hazards (floods/storms/etc.).
 - Vectorize/RAG over historical incidents (add when there is history to retrieve).
 
@@ -109,9 +108,13 @@ A **single LLM agent** (OpenAI `gpt-5.5-terra`) invoked only for events above th
 - **Telegram** alert (v1). Teams/Email deferred.
 - REST API (Worker).
 
-## Lightning Watch (design ready, ship in fast-follow)
+## Lightning Watch (mechanism implemented; feed pending)
 
-Cloud-to-ground lightning as a first-class event. Each strike opens a **configurable 24–72 h monitoring window** implemented as a **Durable Object with an alarm**; incoming detections are correlated against open watches; the DO self-expires. Wired once a lightning feed is chosen.
+Cloud-to-ground lightning as a first-class event. Each strike opens (or refreshes) a **configurable 24–72 h monitoring window** on its H3 cell; later detections are correlated against active watches in Phase 3 (a strike shortly before a hotspot suggests a lightning-caused ignition).
+
+**Implemented** as a **D1 `lightning_watch` table** with an `expires_at` window (default 48 h) rather than a Durable Object — the correlation is a cheap indexed query and needs no per-cell coordination, so D1 is simpler for the MVP (a DO would only be warranted if watches needed active alarms/coordination). `ingestLightning()` opens/refreshes/prunes watches; `hasActiveLightningWatch(cell)` is ready for the deterministic engine. `GET /lightning` lists active watches; `/dev/lightning/test` injects a strike.
+
+**Pending — the lightning feed.** No free, clean, Worker-friendly lightning API exists for the region: Blitzortung is free but only via an obfuscated real-time WebSocket (fragile, would need a Durable Object holding the connection); OpenWeather/DTN/Xweather are reliable but paid (API key). The ingestion is feed-agnostic (`ingestLightning(strikes[])`), so wiring a chosen source is small.
 
 ## Event Flow
 
