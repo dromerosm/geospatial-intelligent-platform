@@ -79,6 +79,7 @@ export async function digitalTwinStats(env: Env) {
        MAX(slope_deg)                               AS max_slope_deg,
        SUM(population)                              AS total_population,
        SUM(pop_child)                              AS total_child_0_14,
+       SUM(pop_adult)                              AS total_adult_15_64,
        SUM(pop_elderly)                            AS total_elderly_65plus,
        ROUND(MAX(population_density), 1)            AS max_density_km2
      FROM digital_twin_cell`,

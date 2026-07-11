@@ -197,8 +197,9 @@ CREATE TABLE digital_twin_cell (
   aspect_deg      REAL,
   population        INTEGER,        -- resident population in cell (INE 2025)
   population_density REAL,           -- people/km²
-  pop_child         INTEGER,        -- residents aged 0-14 (at-risk band)
-  pop_elderly       INTEGER,        -- residents aged 65+ (at-risk band)
+  pop_child         INTEGER,        -- residents aged 0-14
+  pop_adult         INTEGER,        -- residents aged 15-64 (working-age)
+  pop_elderly       INTEGER,        -- residents aged 65+  (child+adult+elderly = population)
   dist_asset_m    INTEGER,                 -- nearest critical asset
   hist_fire_flag  INTEGER DEFAULT 0
 );

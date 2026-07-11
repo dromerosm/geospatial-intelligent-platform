@@ -45,8 +45,8 @@ docs/             Architecture notes
 - Every 15 min: FIRMS VIIRS hotspots for Aragón → normalised → D1 (`observation`), raw CSV → R2.
 - Hourly: Open-Meteo fire weather sampled over a grid → D1 (`fire_weather`), Triple-30 flagged.
 - **Digital Twin**: ~9.4k H3 res-7 cells for Aragón — terrain (slope/aspect), **INE Censo
-  Anual 2025 population + density + at-risk age bands (children 0-14, elderly 65+), by census
-  section**, **CORINE land cover → fuel class**, **EFFIS fire history**, and distance-to-asset.
+  Anual 2025 population + density + full age breakdown (children 0-14, adults 15-64, elderly
+  65+), by census section**, **CORINE land cover → fuel class**, **EFFIS fire history**, and distance-to-asset.
   Built offline via `npm run twin:build` (see [`docs/deploy.md`](docs/deploy.md)).
 - Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`.
 - Every ingestion writes an `audit_log` row.

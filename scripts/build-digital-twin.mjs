@@ -2,9 +2,10 @@
 //
 // Enumerates the H3 res-7 cells covering Aragón and enriches each with:
 //   - terrain: elevation -> steepest-descent slope + aspect  (Open-Elevation, real)
-//   - population + population_density + pop_child (0-14) + pop_elderly (65+):
-//     INE Censo Anual 2025 by census section (age bands, both sexes), areally
-//     interpolated to H3 via res-9 subcells (authoritative, ref 1-Jan-2025)
+//   - population + population_density + age bands pop_child (0-14) /
+//     pop_adult (15-64) / pop_elderly (65+): INE Censo Anual 2025 by census
+//     section (both sexes), areally interpolated to H3 via res-9 subcells
+//     (authoritative, ref 1-Jan-2025). child + adult + elderly = population.
 //   - municipio: predominant municipality per cell (INE section NMUN/NPRO,
 //     majority of res-9 subcells) — labelling/context only, not a scoring input
 //   - land_cover + fuel_type: CORINE Land Cover 2018 (EEA Identify) -> fuel class
@@ -203,8 +204,9 @@ function ageBandLower(edad) {
   return m ? Number(m[1]) : null;
 }
 
-// Per section (both sexes): total plus the two dependency bands most relevant to
-// wildfire evacuation risk — children (0-14) and elderly (65+).
+// Per section (both sexes): total plus the two dependency bands, children (0-14)
+// and elderly (65+). Working-age adults (15-64) are the residual at emit time so
+// child + adult + elderly = population exactly.
 async function fetchSectionPopulation() {
   const pop = new Map(); // CUSEC -> { total, child, elderly }
   for (const [prov, id] of Object.entries(INE_POP_TABLES)) {
@@ -442,12 +444,12 @@ function toSql(rows) {
         (r) =>
           `('${r.cell}',${str(r.landCover)},${str(r.fuelType)},${num(r.slopeDeg)},${num(r.aspectDeg)},` +
           `${num(r.population)},${num(r.density)},${num(r.distAssetM)},${r.histFire},${str(r.municipio)},` +
-          `${num(r.popChild)},${num(r.popElderly)})`,
+          `${num(r.popChild)},${num(r.popAdult)},${num(r.popElderly)})`,
       )
       .join(",");
     lines.push(
       "INSERT OR REPLACE INTO digital_twin_cell " +
-        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag,municipio,pop_child,pop_elderly) " +
+        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag,municipio,pop_child,pop_adult,pop_elderly) " +
         `VALUES ${values};`,
     );
   }
@@ -496,6 +498,8 @@ async function main() {
     const p = pop7.get(cell) ?? { total: 0, child: 0, elderly: 0 };
     const population = Math.round(p.total);
     const density = Math.round((population / cellArea(cell, "km2")) * 10) / 10;
+    const popChild = Math.round(p.child);
+    const popElderly = Math.round(p.elderly);
     const lc = landCover.get(cell);
     return {
       cell,
@@ -504,8 +508,9 @@ async function main() {
       fuelType: fuelFromCode(lc?.code ?? null),
       population,
       density,
-      popChild: Math.round(p.child),
-      popElderly: Math.round(p.elderly),
+      popChild,
+      popAdult: population - popChild - popElderly, // residual: bands sum to population
+      popElderly,
       distAssetM: nearestAsset(cell, assets),
       histFire: burnt.has(cell) ? 1 : 0,
       municipio: muni7.get(cell) ?? null,
@@ -517,14 +522,15 @@ async function main() {
 
   const sum = (f) => rows.reduce((s, r) => s + f(r), 0);
   const totalPop = sum((r) => r.population);
-  const elderly = sum((r) => r.popElderly);
   const child = sum((r) => r.popChild);
+  const adult = sum((r) => r.popAdult);
+  const elderly = sum((r) => r.popElderly);
   console.error(
     `\nDone. ${rows.length} cells -> ${OUT}\n` +
       `  slope populated:      ${rows.filter((r) => r.slopeDeg != null).length}\n` +
       `  land cover populated: ${rows.filter((r) => r.landCover != null).length}\n` +
       `  municipio populated:  ${rows.filter((r) => r.municipio != null).length}\n` +
-      `  population in cells:   ${totalPop} (child 0-14: ${child}, elderly 65+: ${elderly})\n` +
+      `  population in cells:   ${totalPop} (child 0-14: ${child}, adult 15-64: ${adult}, elderly 65+: ${elderly})\n` +
       `  hist-fire cells:      ${rows.filter((r) => r.histFire).length}\n` +
       `  infra (dist) populated: ${rows.filter((r) => r.distAssetM != null).length}`,
   );

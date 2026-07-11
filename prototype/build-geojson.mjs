@@ -23,7 +23,7 @@ const OUT = join(HERE, "data", "aragon-density.geojson");
 const COLUMNS = [
   "h3", "land_cover", "fuel_type", "slope_deg", "aspect_deg",
   "population", "density", "dist_asset_m", "hist_fire_flag", "municipio",
-  "pop_child", "pop_elderly",
+  "pop_child", "pop_adult", "pop_elderly",
 ];
 
 // Parse the SQL VALUES tuples. A hand tokenizer (not a regex) because string
@@ -64,7 +64,7 @@ function main() {
   let densMin = Infinity, densMax = -Infinity, popTotal = 0, labelled = 0, fires = 0, elderTotal = 0;
 
   for (const f of parseTuples(sql)) {
-    const [h3, landCover, fuelType, slope, aspect, population, density, dist, hist, municipio, child, elderly] = f;
+    const [h3, landCover, fuelType, slope, aspect, population, density, dist, hist, municipio, child, adult, elderly] = f;
     const pop = num(population) ?? 0;
     const dens = num(density) ?? 0;
     const [lat, lng] = cellToLatLng(h3);
@@ -80,6 +80,7 @@ function main() {
         population: pop,
         density: dens,
         pop_child: num(child) ?? 0,
+        pop_adult: num(adult) ?? 0,
         pop_elderly: num(elderly) ?? 0,
         pct_elderly: pop > 0 ? Math.round(((num(elderly) ?? 0) / pop) * 1000) / 10 : 0,
         dist_asset_m: num(dist),
