@@ -6,9 +6,10 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, insertObservations, pruneFireWeather, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
+import { currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, recentObservations, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { fetchFireWeather } from "./ingest/weather.js";
+import { computeFwi, FWI_START } from "./lib/fwi.js";
 import type { Env } from "./types.js";
 import LANDING from "./landing.html";
 
@@ -31,6 +32,32 @@ async function runWeather(env: Env): Promise<void> {
   const triple30 = rows.filter((r) => r.triple30).length;
   await writeAudit(env, "ingest", { feed: "OPEN_METEO", cells: written, triple30 });
   console.log(`Weather: ${written} cells, ${triple30} in Triple-30`);
+}
+
+// Advance the FWI System one day per grid point, from today's noon forecast and
+// yesterday's accumulated moisture codes (startup defaults on the first run).
+async function runFwi(env: Env): Promise<void> {
+  const rows = await fireWeatherForFwi(env);
+  const month = new Date().getUTCMonth() + 1;
+  const NOON = 12; // forecast_json starts at today 00:00 (hourly)
+  const updates = [];
+  for (const r of rows) {
+    if (!r.forecast_json) continue;
+    const f = JSON.parse(r.forecast_json);
+    const temp = f.temp_c?.[NOON];
+    const rh = f.rh_pct?.[NOON];
+    const wind = f.wind_kmh?.[NOON];
+    if (temp == null || rh == null || wind == null) continue;
+    const rain = (f.rain_mm ?? []).slice(0, 24).reduce((a: number, b: number) => a + (b || 0), 0);
+    const out = computeFwi({
+      temp, rh, wind, rain, month,
+      ffmc0: r.ffmc ?? FWI_START.ffmc, dmc0: r.dmc ?? FWI_START.dmc, dc0: r.dc ?? FWI_START.dc,
+    });
+    updates.push({ cell: r.h3_cell, ...out });
+  }
+  const n = await updateFwi(env, updates);
+  await writeAudit(env, "fwi", { cells: n, month });
+  console.log(`FWI: ${n} cells advanced`);
 }
 
 function json(data: unknown, status = 200): Response {
@@ -81,7 +108,10 @@ NASA FIRMS (hotspots), Open-Meteo (fire weather), INE Censo Anual 2025 (populati
 
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const job = controller.cron === "0 */3 * * *" ? runWeather(env) : runFirms(env);
+    const job =
+      controller.cron === "0 12 * * *" ? runFwi(env)
+      : controller.cron === "0 */3 * * *" ? runWeather(env)
+      : runFirms(env);
     ctx.waitUntil(job.catch((err) => console.error("scheduled error:", err)));
   },
 
@@ -145,6 +175,9 @@ export default {
       case "/dev/ingest/weather":
         await runWeather(env);
         return json({ ran: "weather" });
+      case "/dev/compute/fwi":
+        await runFwi(env);
+        return json({ ran: "fwi" });
       default:
         return json({ error: "not found" }, 404);
     }

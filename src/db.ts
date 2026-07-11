@@ -48,6 +48,26 @@ export async function pruneFireWeather(env: Env, keepUpdatedAt: string): Promise
   await env.DB.prepare(`DELETE FROM fire_weather WHERE updated_at <> ?`).bind(keepUpdatedAt).run();
 }
 
+/** Rows needed to advance the FWI System (forecast + yesterday's moisture codes). */
+export async function fireWeatherForFwi(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT h3_cell, forecast_json, ffmc, dmc, dc FROM fire_weather`,
+  ).all<{ h3_cell: string; forecast_json: string | null; ffmc: number | null; dmc: number | null; dc: number | null }>();
+  return results;
+}
+
+export async function updateFwi(
+  env: Env,
+  rows: { cell: string; ffmc: number; dmc: number; dc: number; isi: number; bui: number; fwi: number }[],
+): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmt = env.DB.prepare(
+    `UPDATE fire_weather SET ffmc=?, dmc=?, dc=?, isi=?, bui=?, fwi=? WHERE h3_cell=?`,
+  );
+  await env.DB.batch(rows.map((r) => stmt.bind(r.ffmc, r.dmc, r.dc, r.isi, r.bui, r.fwi, r.cell)));
+  return rows.length;
+}
+
 export async function writeAudit(env: Env, stage: string, detail: unknown): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO audit_log (id, at, stage, event_id, detail_json) VALUES (?,?,?,?,?)`,
@@ -70,7 +90,7 @@ export async function currentFireWeather(env: Env) {
   // Exclude forecast_json — 225 rows × a 3-day series would be a heavy response.
   const { results } = await env.DB.prepare(
     `SELECT h3_cell, updated_at, temp_c, rh_pct, wind_kmh, wind_dir_deg, rain_mm,
-            fuel_moisture_proxy, triple30
+            triple30, ffmc, dc, fwi
        FROM fire_weather ORDER BY updated_at DESC`,
   ).all();
   return results;

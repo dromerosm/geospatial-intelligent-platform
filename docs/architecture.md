@@ -145,8 +145,12 @@ Design choices:
 
 ## Open items
 
-- Fuel-moisture proxy is a placeholder (relative humidity); replace with an EFFIS/FWI
-  component. Drought indicators are also still pending.
+- **FWI System** (`src/lib/fwi.ts`) computes the Canadian fire-weather indices daily from
+  the grid's noon forecast — FFMC/DMC/DC/ISI/BUI/FWI (`fire_weather.ffmc…fwi`, migration
+  0007, cron `0 12 * * *`). This replaces the RH fuel-moisture proxy and gives a drought
+  signal (DC). The moisture codes accumulate day to day: fresh installs start from spring
+  defaults and climb over ~weeks; a one-off spin-up over historical weather would make DC
+  realistic immediately. (Old `fuel_moisture_proxy` column kept but superseded by FFMC.)
 - Fire weather is a **surface-uniform ~15 km grid clipped to Aragón** (213 points,
   `scripts/build-weather-grid.mjs` → `src/weather-points.json`), refreshed every 3 h with a
   3-day hourly forecast per point (`fire_weather.forecast_json`). Background layer only:
