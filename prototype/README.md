@@ -63,6 +63,32 @@ es `image/png|jpeg` → usa `gibsWmts(id, matrix, ext)`. Si es
 el hover. GIBS tiene cientos de capas (NDVI, temperatura de superficie, humedad…):
 catálogo en https://nasa-gibs.github.io/gibs-api-docs/
 
+## Capas del proyecto (dinámicas, en vivo)
+
+Sección "Capas del proyecto" — leen la API del Worker **mismo-origin** (solo funcionan
+en `/mapa`, no en `.pages.dev`/local, donde degradan sin romper):
+
+- **EFFIS histórico** — celdas quemadas (`hist_fire`) del propio dataset estático,
+  resaltadas en rojo. No hace red.
+- **FIRMS focos** — focos VIIRS en vivo desde `/observations` (polígonos
+  `footprint_geojson`), carga perezosa al activar.
+- **Meteo (viento)** — 225 puntos de `/fire-weather` (rejilla 15×15 de Open-Meteo).
+  Flechas orientadas por `wind_dir_deg` (apuntan a dónde va el viento), coloreadas por
+  velocidad (azul <15, amarillo 15–30, naranja ≥30 km/h) y con anillo rojo en
+  **Triple-30** (temp>30 · viento>30 · HR<30). Las filas solo traen `h3_cell`, así que se
+  carga **h3-js perezosamente** (jsDelivr, solo al activar la capa) para geolocalizar los
+  225 puntos con `cellToLatLng` — sin penalizar la carga por defecto ni tocar el Worker.
+
+### Meteo — pendiente para el futuro
+
+- **Campo Temp / HR**: `/fire-weather` ya trae `temp_c` y `rh_pct` por punto; se podrían
+  pintar como puntos coloreados o un campo interpolado (coarse, 225 nodos).
+- **Previsión a 3 días (hover)**: la ingesta guarda `forecast_json` (72 pasos horarios)
+  por punto, pero `currentFireWeather` lo **excluye** de `/fire-weather` (225 filas × 72
+  pasos = respuesta pesada). Para un sparkline de 3 días al pinchar un punto haría falta
+  un endpoint pequeño en el Worker, p. ej. `GET /fire-weather?cell=<h3>` que devuelva el
+  `forecast_json` de ese punto (cambio mínimo + deploy del Worker).
+
 ## Uso
 
 ```bash

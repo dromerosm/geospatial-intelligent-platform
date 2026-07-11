@@ -99,6 +99,7 @@
     #legend .lg-label { font-size: 12px; font-variant-numeric: tabular-nums; }
 
     a { color: #7fb3ff; }
+    .leaflet-div-icon.wind-arrow { background: transparent; border: none; }
   </style>
 </head>
 <body>
@@ -122,6 +123,7 @@
     <div class="seg-label">Capas del proyecto</div>
     <div id="proj-seg"></div>
     <div id="firms-note" class="hint"></div>
+    <div id="meteo-note" class="hint"></div>
     <div id="legend">
       <div class="lg-title" id="legend-title">Leyenda</div>
       <div id="legend-rows"></div>
@@ -286,6 +288,58 @@
       ovSeg.appendChild(b);
     });
 
+    // --- Fire weather (Open-Meteo 15×15 grid via /fire-weather) ---------------
+    // Rows are keyed only by H3 cell; load h3-js lazily (first toggle) to place
+    // the 225 points, so the default page load stays light.
+    let _h3;
+    function ensureH3() {
+      if (_h3) return Promise.resolve(_h3);
+      if (window.h3) { _h3 = window.h3; return Promise.resolve(_h3); }
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/h3-js@4.1.0/dist/h3-js.umd.js";
+        s.onload = () => { _h3 = window.h3; resolve(_h3); };
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    const COMPASS = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+    const dirLabel = (d) => COMPASS[Math.round(d / 45) % 8];
+    // Arrow points where the wind goes (dir is where it comes FROM); colour by
+    // speed, red ring on Triple-30 (temp>30 · viento>30 · HR<30).
+    function windIcon(r) {
+      const flow = (r.wind_dir_deg + 180) % 360;
+      const col = r.triple30 ? "#ff3b30" : r.wind_kmh >= 30 ? "#ff8c00" : r.wind_kmh >= 15 ? "#ffd11a" : "#8fd0ff";
+      const ring = r.triple30 ? '<circle cx="11" cy="11" r="9.5" fill="none" stroke="#ff3b30" stroke-width="2"/>' : "";
+      return L.divIcon({
+        className: "wind-arrow", iconSize: [22, 22], iconAnchor: [11, 11],
+        html: `<svg width="22" height="22" viewBox="0 0 22 22">${ring}<g transform="rotate(${flow} 11 11)"><path d="M11 4 V17 M11 4 L8 8 M11 4 L14 8" stroke="${col}" stroke-width="2" fill="none" stroke-linecap="round"/></g></svg>`,
+      });
+    }
+    const meteoTip = (r) =>
+      `${r.temp_c}°C · HR ${r.rh_pct}% · viento ${r.wind_kmh} km/h ${dirLabel(r.wind_dir_deg)}` +
+      (r.triple30 ? " · ⚠ Triple-30" : "");
+    const meteoNote = document.getElementById("meteo-note");
+    let meteoLayer = null;
+    async function loadMeteo() {
+      if (meteoLayer) return meteoLayer;
+      let h3;
+      try { h3 = await ensureH3(); } catch { meteoNote.textContent = "Meteo: no se pudo cargar h3-js"; return null; }
+      const rows = await fetch("/fire-weather").then((r) => (r.ok ? r.json() : [])).catch(() => []);
+      const markers = [];
+      let t30 = 0;
+      for (const r of rows) {
+        let ll; try { ll = h3.cellToLatLng(r.h3_cell); } catch { continue; }
+        if (r.triple30) t30++;
+        markers.push(L.marker(ll, { icon: windIcon(r), keyboard: false }).bindTooltip(meteoTip(r), { sticky: true }));
+      }
+      meteoLayer = L.layerGroup(markers);
+      meteoNote.textContent = rows.length
+        ? `Meteo: ${markers.length} puntos · ${t30} en Triple-30`
+        : "Meteo: solo en el subdominio del proyecto";
+      return meteoLayer;
+    }
+
     // Legend renders from the active layer's rows.
     const legendTitle = document.getElementById("legend-title");
     const legendRows = document.getElementById("legend-rows");
@@ -394,6 +448,7 @@
         const PROJ = {
           effis: { label: "EFFIS histórico", get: () => effisLayer },
           firms: { label: "FIRMS focos", get: loadFirms },
+          meteo: { label: "Meteo (viento)", get: loadMeteo },
         };
         const projSeg = document.getElementById("proj-seg");
         Object.values(PROJ).forEach((ov) => {
