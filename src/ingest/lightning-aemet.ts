@@ -103,16 +103,31 @@ export function extractStrikes(rgba: Uint8Array, W: number, H: number, at: strin
   }));
 }
 
-/** Two-step AEMET OpenData fetch: metadata endpoint -> `datos` URL -> GIF bytes. */
-export async function fetchAemetRayosGif(apiKey: string): Promise<ArrayBuffer> {
+/**
+ * Two-step AEMET OpenData fetch: metadata endpoint -> `datos` URL -> GIF bytes.
+ * The two-step redirect fails transiently now and then; retry the whole
+ * sequence with a short backoff so a blip doesn't drop a scheduled window.
+ * The missing-key guard is outside the loop — a permanent error fails fast.
+ */
+export async function fetchAemetRayosGif(apiKey: string, retries = 2): Promise<ArrayBuffer> {
   if (!apiKey) throw new Error("AEMET_API_KEY is not set");
-  const meta = await fetch(
-    `https://opendata.aemet.es/opendata/api/red/rayos/mapa?api_key=${apiKey}`,
-  ).then((r) => r.json<{ estado: number; descripcion: string; datos: string }>());
-  if (meta.estado !== 200 || !meta.datos) {
-    throw new Error(`AEMET rayos meta: estado ${meta.estado} (${meta.descripcion})`);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 300 * 2 ** (attempt - 1))); // 300ms, 600ms
+    try {
+      const meta = await fetch(
+        `https://opendata.aemet.es/opendata/api/red/rayos/mapa?api_key=${apiKey}`,
+      ).then((r) => r.json<{ estado: number; descripcion: string; datos: string }>());
+      if (meta.estado !== 200 || !meta.datos) {
+        throw new Error(`AEMET rayos meta: estado ${meta.estado} (${meta.descripcion})`);
+      }
+      const res = await fetch(meta.datos);
+      if (!res.ok) throw new Error(`AEMET rayos datos ${res.status}`);
+      return await res.arrayBuffer();
+    } catch (err) {
+      lastErr = err;
+    }
   }
-  const res = await fetch(meta.datos);
-  if (!res.ok) throw new Error(`AEMET rayos datos ${res.status}`);
-  return res.arrayBuffer();
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new Error(`AEMET rayos fetch failed after ${retries + 1} attempts: ${msg}`);
 }
