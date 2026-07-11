@@ -45,7 +45,11 @@ rasteriza en servidor):
 | Focos VIIRS SNPP | `VIIRS_SNPP_Thermal_Anomalies_375m_All` |
 | Focos VIIRS N20 | `VIIRS_NOAA20_Thermal_Anomalies_375m_All` |
 | Focos MODIS | `MODIS_Terra_Thermal_Anomalies_All` |
-| Aerosol / humo | `MODIS_Combined_Value_Added_AOD` |
+
+> Nota: se probó una capa de aerosol/humo (`MODIS_Combined_Value_Added_AOD`) pero
+> es un producto coarse (~10 km, tile-matrix Level6) que a escala regional se ve como
+> bloques enormes, así que se retiró. El humo se aprecia mejor en las bases true-color /
+> falso color. GIBS no ofrece un raster de humo diario de alta resolución.
 
 Endpoints:
 - WMTS — `…/wmts/epsg3857/best/{id}/default/{date}/{matrix}/{z}/{y}/{x}.{ext}`
