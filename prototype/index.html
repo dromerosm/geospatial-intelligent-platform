@@ -61,14 +61,15 @@
     #title .stats span { color: var(--muted); font-size: 11px; }
     #title .seg-label { margin-top: 13px; font-size: 11px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.04em; }
-    #seg, #base-seg, #ov-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-    #seg button, #base-seg button, #ov-seg button {
+    #seg, #base-seg, #ov-seg, #proj-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+    #seg button, #base-seg button, #ov-seg button, #proj-seg button {
       font: inherit; font-size: 12px; color: var(--muted);
       background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
       border-radius: 6px; padding: 5px 9px; cursor: pointer;
     }
-    #seg button:hover, #base-seg button:hover, #ov-seg button:hover { color: var(--text); border-color: var(--muted); }
-    #seg button.active, #base-seg button.active, #ov-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #seg button:hover, #base-seg button:hover, #ov-seg button:hover, #proj-seg button:hover { color: var(--text); border-color: var(--muted); }
+    #seg button.active, #base-seg button.active, #ov-seg button.active, #proj-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #title .hint { margin-top: 5px; font-size: 11px; color: var(--muted); }
 
     #info {
       top: 14px; right: 14px; min-width: 232px; font-size: 12px;
@@ -110,6 +111,9 @@
     <div id="base-seg"></div>
     <div class="seg-label">Capas GIBS (satélite)</div>
     <div id="ov-seg"></div>
+    <div class="seg-label">Capas del proyecto</div>
+    <div id="proj-seg"></div>
+    <div id="firms-note" class="hint"></div>
   </div>
 
   <div id="info" class="panel">
@@ -193,12 +197,6 @@
         colorOf: (p) => FUEL_COLOR[p.fuel_type] ?? NODATA,
         legend: FUEL.map((f) => ({ color: f.color, label: f.label })).concat([{ color: NODATA, label: "sin dato" }]),
       },
-      fire: {
-        label: "Incendio histórico",
-        legendTitle: "Área quemada (EFFIS)",
-        colorOf: (p) => (p.hist_fire ? "#fb6a4a" : "#2f333b"),
-        legend: [{ color: "#fb6a4a", label: "Sí" }, { color: "#2f333b", label: "No" }],
-      },
     };
     let ACT = LAYERS.density;
 
@@ -230,6 +228,9 @@
     map.createPane("gibs");
     map.getPane("gibs").style.zIndex = 450;
     map.getPane("gibs").style.pointerEvents = "none";
+    // Project overlays (EFFIS burnt cells, FIRMS hotspots) sit above the choropleth.
+    map.createPane("proj");
+    map.getPane("proj").style.zIndex = 455;
     function gibsWms(id) {
       return L.tileLayer.wms(GIBS_WMS, {
         layers: id, format: "image/png", transparent: true, time: GIBS_DATE,
@@ -346,6 +347,61 @@
             l.on("mouseout", (e) => { info.style.display = "none"; e.target.setStyle({ weight: 0.15, color: "#000" }); });
           },
         }).addTo(map);
+
+        // --- Project overlays: EFFIS burnt cells + live FIRMS hotspots --------
+        // Force an SVG renderer (not the map's canvas) so empty areas pass the
+        // hover through to the choropleth canvas underneath.
+        const projSvg = L.svg({ pane: "proj" });
+        const effisLayer = L.geoJSON(
+          { type: "FeatureCollection", features: fc.features.filter((f) => f.properties.hist_fire === 1) },
+          { renderer: projSvg, interactive: false, style: { color: "#ff4d4d", weight: 1, fillColor: "#ff4d4d", fillOpacity: 0.35 } },
+        );
+
+        // FIRMS: live VIIRS hotspots from the Worker API (same-origin at /mapa).
+        // Lazy-loaded on first toggle; footprint_geojson is a stored Polygon.
+        const firmsNote = document.getElementById("firms-note");
+        let firmsLayer = null;
+        async function loadFirms() {
+          if (firmsLayer) return firmsLayer;
+          firmsLayer = L.geoJSON(null, {
+            renderer: projSvg,
+            style: { color: "#ff8c00", weight: 1, fillColor: "#ffa500", fillOpacity: 0.6 },
+            onEachFeature: (f, l) => l.bindTooltip(
+              `FIRMS · ${f.properties.acquired_at || ""}` + (f.properties.confidence != null ? ` · conf ${f.properties.confidence}` : ""),
+              { sticky: true }),
+          });
+          try {
+            const rows = await fetch("/observations").then((r) => (r.ok ? r.json() : []));
+            const feats = [];
+            for (const o of rows) {
+              if (!o.footprint_geojson) continue;
+              try { feats.push({ type: "Feature", geometry: JSON.parse(o.footprint_geojson), properties: { acquired_at: o.acquired_at, confidence: o.confidence } }); } catch {}
+            }
+            firmsLayer.addData({ type: "FeatureCollection", features: feats });
+            firmsNote.textContent = feats.length ? `FIRMS: ${feats.length} focos recientes` : "FIRMS: sin focos activos ahora";
+          } catch {
+            firmsNote.textContent = "FIRMS: solo disponible en el subdominio del proyecto";
+          }
+          return firmsLayer;
+        }
+
+        const PROJ = {
+          effis: { label: "EFFIS histórico", get: () => effisLayer },
+          firms: { label: "FIRMS focos", get: loadFirms },
+        };
+        const projSeg = document.getElementById("proj-seg");
+        Object.values(PROJ).forEach((ov) => {
+          const b = document.createElement("button");
+          b.textContent = ov.label;
+          b.onclick = async () => {
+            const layer = await ov.get();
+            if (!layer) return;
+            const on = map.hasLayer(layer);
+            if (on) map.removeLayer(layer); else layer.addTo(map);
+            b.classList.toggle("active", !on);
+          };
+          projSeg.appendChild(b);
+        });
 
         // The container can still be 0-sized here (embedded panes / late layout).
         // Fitting then clamps zoom to max, so only fit once it has real dimensions,
