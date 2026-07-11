@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Densidad de población — Aragón (H3)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: rgba(20, 22, 28, 0.92);
+      --text: #e8e8ea;
+      --muted: #9aa0aa;
+      --border: rgba(255, 255, 255, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    #map { position: absolute; inset: 0; z-index: 0; background: var(--bg); }
+
+    .panel {
+      position: absolute;
+      z-index: 500;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      backdrop-filter: blur(6px);
+    }
+    #title { top: 14px; left: 14px; max-width: 340px; }
+    #title h1 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+    #title p { margin: 0; color: var(--muted); font-size: 12px; }
+    #title .stats { margin-top: 10px; display: flex; gap: 16px; }
+    #title .stats div { line-height: 1.2; }
+    #title .stats b { font-size: 17px; font-weight: 600; }
+    #title .stats span { color: var(--muted); font-size: 11px; }
+
+    #info {
+      top: 14px; right: 14px; min-width: 220px; font-size: 12px;
+      display: none;
+    }
+    #info b { font-size: 13px; }
+    #info .row { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; color: var(--muted); }
+    #info .row span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    #legend { bottom: 18px; left: 14px; }
+    #legend .lg-title { font-size: 11px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+    #legend .lg-row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+    #legend i { width: 16px; height: 12px; border-radius: 2px; display: inline-block; }
+    #legend .lg-label { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+    .leaflet-tooltip.cell-tip {
+      background: var(--panel); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      font-size: 12px;
+    }
+    a { color: #7fb3ff; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="title" class="panel">
+    <h1>Densidad de población · Aragón</h1>
+    <p>Celdas H3 res-7 (~5 km²) · INE Censo Anual 2025, interpolado areal</p>
+    <div class="stats">
+      <div><b id="st-cells">—</b><br><span>celdas</span></div>
+      <div><b id="st-pop">—</b><br><span>habitantes</span></div>
+      <div><b id="st-max">—</b><br><span>máx. hab/km²</span></div>
+    </div>
+  </div>
+
+  <div id="info" class="panel">
+    <b id="in-muni">Municipio</b>
+    <div class="row"><span>Densidad</span><span id="in-dens">—</span></div>
+    <div class="row"><span>Población</span><span id="in-pop">—</span></div>
+    <div class="row"><span>Lat, Lon</span><span id="in-ll">—</span></div>
+    <div class="row"><span>Celda H3</span><span id="in-h3">—</span></div>
+  </div>
+
+  <div id="legend" class="panel">
+    <div class="lg-title">Habitantes / km²</div>
+    <div id="legend-rows"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Choropleth breaks (people/km²). Data is extremely skewed — from <1 in the
+    // steppe to ~25k in the Zaragoza urban core — so breaks are hand-set, not linear.
+    const BREAKS = [0, 1, 5, 10, 25, 50, 100, 250, 1000];
+    // ColorBrewer YlOrRd (9-class) — canonical, perceptually-ordered choropleth ramp.
+    const COLORS = ["#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026"];
+    const LABELS = ["< 1","1 – 5","5 – 10","10 – 25","25 – 50","50 – 100","100 – 250","250 – 1000","≥ 1000"];
+
+    const fmt = (n) => n.toLocaleString("es-ES");
+    function colorFor(d) {
+      for (let i = BREAKS.length - 1; i >= 0; i--) if (d >= BREAKS[i]) return COLORS[i];
+      return COLORS[0];
+    }
+
+    // Legend
+    const lr = document.getElementById("legend-rows");
+    for (let i = COLORS.length - 1; i >= 0; i--) {
+      const row = document.createElement("div");
+      row.className = "lg-row";
+      row.innerHTML = `<i style="background:${COLORS[i]}"></i><span class="lg-label">${LABELS[i]}</span>`;
+      lr.appendChild(row);
+    }
+
+    const map = L.map("map", { preferCanvas: true, zoomControl: true }).setView([41.3, -0.9], 8);
+    window.addEventListener("resize", () => map.invalidateSize());
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+      attribution: '© OpenStreetMap · © CARTO',
+      subdomains: "abcd", maxZoom: 19,
+    }).addTo(map);
+
+    const info = document.getElementById("info");
+    function showInfo(p) {
+      document.getElementById("in-muni").textContent = p.municipio || "Sin municipio";
+      document.getElementById("in-dens").textContent = fmt(p.density) + " hab/km²";
+      document.getElementById("in-pop").textContent = fmt(p.population) + " hab";
+      document.getElementById("in-ll").textContent =
+        p.lat != null ? `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}` : "—";
+      document.getElementById("in-h3").textContent = p.h3;
+      info.style.display = "block";
+    }
+
+    fetch("data/aragon-density.geojson")
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((fc) => {
+        const m = fc.metadata || {};
+        document.getElementById("st-cells").textContent = fmt(m.cells ?? fc.features.length);
+        document.getElementById("st-pop").textContent = fmt(m.populationTotal ?? 0);
+        document.getElementById("st-max").textContent = fmt(Math.round(m.densityMax ?? 0));
+
+        const layer = L.geoJSON(fc, {
+          style: (f) => ({
+            fillColor: colorFor(f.properties.density),
+            fillOpacity: 0.72,
+            color: "#000",
+            weight: 0.15,
+          }),
+          onEachFeature: (f, l) => {
+            l.on("mouseover", (e) => {
+              showInfo(f.properties);
+              e.target.setStyle({ weight: 1.2, color: "#fff" });
+            });
+            l.on("mouseout", (e) => {
+              info.style.display = "none";
+              e.target.setStyle({ weight: 0.15, color: "#000" });
+            });
+          },
+        }).addTo(map);
+
+        // The container can still be 0-sized at this point (embedded panes / late
+        // layout). Fitting then would clamp zoom to max, so re-measure FIRST, then fit.
+        const fit = () => {
+          map.invalidateSize();
+          map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+        };
+        fit();
+        setTimeout(fit, 200);
+      })
+      .catch((err) => {
+        document.getElementById("title").insertAdjacentHTML(
+          "beforeend",
+          `<p style="color:#ff9a9a;margin-top:8px">No se pudo cargar data/aragon-density.geojson (${err.message}).<br>Ejecuta <code>node prototype/build-geojson.mjs</code> y sirve la carpeta por HTTP.</p>`
+        );
+      });
+  </script>
+</body>
+</html>

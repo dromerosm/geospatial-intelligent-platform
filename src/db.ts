@@ -73,8 +73,9 @@ export async function digitalTwinStats(env: Env) {
     `SELECT
        COUNT(*)                                     AS cells,
        COUNT(slope_deg)                             AS with_slope,
+       COUNT(land_cover)                            AS with_land_cover,
        COUNT(dist_asset_m)                          AS with_infra,
-       ROUND(AVG(slope_deg), 2)                     AS avg_slope_deg,
+       SUM(hist_fire_flag)                          AS hist_fire_cells,
        MAX(slope_deg)                               AS max_slope_deg,
        SUM(population)                              AS total_population,
        ROUND(AVG(population_density), 1)            AS avg_density_km2,

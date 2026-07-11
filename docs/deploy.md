@@ -52,9 +52,10 @@ Migrations are append-only and tracked by wrangler; already-applied files are sk
 ## Rebuilding the Digital Twin (Phase 2)
 
 A one-off batch job — re-run only when the region or its data sources change. Pulls
-elevation (Open-Elevation, checkpointed to `tmp/elevations.json`), INE census-section
-population (2025) and OSM assets. First run ~10–15 min (elevation); re-runs are fast
-because elevation is cached.
+elevation (Open-Elevation), INE census-section population (2025), CORINE land cover,
+EFFIS fire history and OSM assets. The two slow point-query steps are checkpointed and
+resumable — elevation to `tmp/elevations.json`, land cover to `tmp/landcover.json` — so
+re-runs are fast. First full run ~30–40 min (land cover is ~9.4k point queries).
 
 ```bash
 npm run twin:build           # -> tmp/digital-twin.sql (~9.4k cells for Aragón)

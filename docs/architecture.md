@@ -60,7 +60,8 @@ plus native `fetch`; distance/bearing are inline haversine.
 | `slope_deg`, `aspect_deg` | Open-Elevation → steepest-descent over the H3 neighbourhood | real |
 | `population`, `population_density` | **INE Censo Anual 2025** by census section (ref 1-Jan-2025), areally interpolated to H3 | real, authoritative |
 | `dist_asset_m` | nearest OSM asset (fire station, substation, settlement) via Overpass | real, best-effort |
-| `land_cover`, `fuel_type`, `hist_fire_flag` | — | **NULL in v1** (Phase 2.1: CORINE/EFFIS raster sampling) |
+| `land_cover`, `fuel_type` | **CORINE Land Cover 2018** (Copernicus/EEA), per-cell class via ArcGIS Identify → fuel class | real, authoritative |
+| `hist_fire_flag` | **EFFIS** burnt-area perimeters (`modis.ba.poly`) intersecting the cell | real, authoritative |
 
 ### Population: INE Censo Anual 2025 (authoritative)
 
@@ -92,11 +93,21 @@ Design choices:
 - Slope is a **cell-scale** value (gradient over the ~1.4 km res-7 neighbourhood), not
   slope at a point — consistent with the platform's precision-honesty principle.
 
+### Land cover, fuel & fire history (Phase 2.1)
+
+- **`land_cover` / `fuel_type`** — CORINE Land Cover 2018 sampled per cell via the EEA
+  ArcGIS **Identify** point query (`CLC2018_WM` MapServer). The CLC `CODE_18` class is
+  mapped to a wildfire fuel class (`none`/`low`/`medium`/`high`/`very_high`). ~9.4k point
+  queries at concurrency 6, checkpointed to `tmp/landcover.json` (resumable). No
+  getSamples/ImageServer is exposed, so per-cell Identify is the batch mechanism.
+- **`hist_fire_flag`** — EFFIS burnt-area perimeters (`ms:modis.ba.poly`, WFS GeoJSON,
+  ≥30 ha, 2000→present) intersecting Aragón; each perimeter is discretised to res-7 cells
+  which are flagged. Best-effort: if EFFIS is unavailable the flag defaults to 0.
+
 ## Open items
 
-- **Phase 2.1**: populate `land_cover` / `fuel_type` (CORINE Land Cover or ESA WorldCover
-  raster sampling) and `hist_fire_flag` (EFFIS historical burnt areas). Aragón is within
-  the EFFIS domain.
 - Fuel-moisture proxy is a placeholder (relative humidity); replace with an EFFIS/FWI
   component.
 - Weather is grid-sampled (9 points); per-cell interpolation is a later refinement.
+- Fuel class from CLC is a coarse mapping; a fire-behaviour fuel model (e.g. Scott &
+  Burgan / Prometheus) could refine it later.

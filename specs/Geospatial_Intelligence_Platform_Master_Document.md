@@ -34,7 +34,7 @@ The goal is a **fast, relevant, shippable MVP**, not the full platform. Everythi
 
 ### Confirmed decisions (v1)
 
-1. **Region:** **Aragón** (Spain). Digital Twin preload sources: elevation→slope (Open-Elevation), **population + density from the original INE Censo Anual 2025 by census section** (geometry via INE OGC API, population via the per-province jaxiT3 tables, areally interpolated to H3), OSM infrastructure for distance-to-asset, and land cover / fuel (CORINE/EFFIS) deferred to Phase 2.1 — all clipped to the Aragón boundary.
+1. **Region:** **Aragón** (Spain). Digital Twin preload sources, all clipped to the Aragón boundary: elevation→slope (Open-Elevation); **population + density from the original INE Censo Anual 2025 by census section** (geometry via INE OGC API, population via per-province jaxiT3 tables, areally interpolated to H3); **CORINE Land Cover 2018 → fuel class** (Copernicus/EEA Identify); **EFFIS burnt-area history**; and OSM infrastructure for distance-to-asset.
 2. **LLM provider:** **OpenAI via Cloudflare AI Gateway** — `gpt-5.5-terra` for briefings, `gpt-5-nano` for cheap pre-classification. *(Provider chosen for v1 economics; the reasoning layer is provider-agnostic — AI Gateway lets us swap to Claude when we scale, no app change.)*
 3. **Primary alert channel:** **Telegram** (bot + webhook).
 

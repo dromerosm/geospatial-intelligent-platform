@@ -30,6 +30,30 @@ const SECTIONS_COLLECTION = "WMS_INE_SECCIONES_G01:Secciones_2025";
 const INE_POP_TABLES = { Huesca: 69193, Zaragoza: 69289, Teruel: 69345 };
 const CENSUS_YEAR = "2025";
 
+// CORINE Land Cover 2018 (Copernicus/EEA) — per-cell class via ArcGIS Identify.
+const CLC_BASE = "https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer";
+const LC_CACHE = "tmp/landcover.json";
+const LC_CONCURRENCY = 6;
+// EFFIS burnt-area perimeters (Copernicus) — for historical fire occurrence.
+const EFFIS_WFS = "https://maps.effis.emergency.copernicus.eu/effis";
+
+// CLC CODE_18 -> wildfire fuel class. Ranges cover the 44-class nomenclature.
+const FUEL_BY_CODE = {
+  312: "very_high", // coniferous forest
+  311: "medium", 313: "high", // broadleaved / mixed forest
+  322: "high", 323: "high", 324: "high", // moors & heath / sclerophyllous / transitional woodland-shrub
+  321: "medium", 231: "medium", 243: "medium", 244: "medium", 333: "medium", // grassland/pasture/agroforestry/sparse
+};
+function fuelFromCode(code) {
+  if (code == null) return null;
+  if (FUEL_BY_CODE[code]) return FUEL_BY_CODE[code];
+  if (code >= 211 && code <= 242) return "low"; // arable land, permanent crops
+  if (code >= 111 && code <= 142) return "none"; // artificial surfaces
+  if (code >= 331 && code <= 335) return "low"; // bare / beaches / burnt / glaciers
+  if (code >= 411 && code <= 523) return "none"; // wetlands / water
+  return "low";
+}
+
 const R = 6_371_000;
 const toRad = (d) => (d * Math.PI) / 180;
 const toDeg = (r) => (r * 180) / Math.PI;
@@ -227,7 +251,86 @@ function populationByCell(sections, popMap) {
   return pop7;
 }
 
+// --- 3b. Land cover + fuel (CORINE CLC2018, per-cell Identify) --------------
+async function mapPool(items, concurrency, fn) {
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx++;
+      await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, worker));
+}
+
+async function identifyCLC(lat, lng) {
+  const ext = `${lng - 0.01},${lat - 0.01},${lng + 0.01},${lat + 0.01}`;
+  const url =
+    `${CLC_BASE}/identify?f=json&geometry=${lng},${lat}&geometryType=esriGeometryPoint` +
+    `&sr=4326&layers=all&tolerance=1&mapExtent=${ext}&imageDisplay=50,50,96&returnGeometry=false`;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { "User-Agent": UA } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const results = (await res.json()).results ?? [];
+      const rast = results.find((r) => r.attributes && r.attributes["Raster.CODE_18"]);
+      if (rast) return { code: Number(rast.attributes["Raster.CODE_18"]), label: rast.attributes["Raster.LABEL3"] };
+      const vec = results.find((r) => /^\d+$/.test(r.value ?? ""));
+      if (vec) return { code: Number(vec.value), label: vec.layerName };
+      return null; // outside CLC extent (e.g. water) -> no class
+    } catch (err) {
+      if (attempt >= 4) { console.error(`  CLC fail ${lat},${lng}: ${err.message}`); return null; }
+      await sleep(3000);
+    }
+  }
+}
+
+async function fetchLandCover(cells) {
+  const cache = new Map(existsSync(LC_CACHE) ? Object.entries(JSON.parse(readFileSync(LC_CACHE, "utf8"))) : []);
+  const todo = cells.filter((c) => !cache.has(c));
+  console.error(`  landcover cached: ${cache.size}, to fetch: ${todo.length}`);
+  let done = 0;
+  await mapPool(todo, LC_CONCURRENCY, async (cell) => {
+    const [lat, lng] = cellToLatLng(cell);
+    cache.set(cell, await identifyCLC(lat, lng));
+    if (++done % 500 === 0) {
+      writeFileSync(LC_CACHE, JSON.stringify(Object.fromEntries(cache)));
+      console.error(`  landcover ${done}/${todo.length}`);
+    }
+  });
+  writeFileSync(LC_CACHE, JSON.stringify(Object.fromEntries(cache)));
+  return cache;
+}
+
+// --- 3c. Historical fire (EFFIS burnt-area perimeters) ----------------------
+async function burntAreaCells(bbox) {
+  const url =
+    `${EFFIS_WFS}?service=WFS&version=1.0.0&request=GetFeature&typename=ms:modis.ba.poly` +
+    `&bbox=${bbox.w},${bbox.s},${bbox.e},${bbox.n}&outputformat=geojson`;
+  const res = await fetch(url, { headers: { "User-Agent": UA } });
+  if (!res.ok) throw new Error(`EFFIS ${res.status}`);
+  const fc = await res.json();
+  const cells = new Set();
+  for (const f of fc.features ?? []) {
+    if (!f.geometry) continue;
+    const polys = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [f.geometry.coordinates];
+    for (const poly of polys) {
+      // EFFIS WFS 1.0.0 GeoJSON emits [lat, lng]; polygonToCells expects [lng, lat].
+      const rings = poly.map((ring) => ring.map(([lat, lng]) => [lng, lat]));
+      for (const h of polygonToCells(rings, RES, true)) cells.add(h);
+    }
+  }
+  console.error(`  burnt areas: ${(fc.features ?? []).length} perimeters -> ${cells.size} cells`);
+  return cells;
+}
+
 // --- 4. Infrastructure (OSM Overpass, best-effort) --------------------------
+const OVERPASS_MIRRORS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://lz4.overpass-api.de/api/interpreter",
+];
+
 async function osmAssets(bbox) {
   const bb = `${bbox.s},${bbox.w},${bbox.n},${bbox.e}`;
   const query = `[out:json][timeout:180];
@@ -239,13 +342,23 @@ async function osmAssets(bbox) {
   node["place"~"^(city|town|village)$"](${bb});
 );
 out center;`;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain", "User-Agent": UA },
-    body: query,
-  });
-  if (!res.ok) throw new Error(`Overpass ${res.status}`);
-  const data = await res.json();
+  let data;
+  for (const url of OVERPASS_MIRRORS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain", "User-Agent": UA },
+        body: query,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+      break;
+    } catch (err) {
+      console.error(`  Overpass ${url} failed (${err.message}), trying next...`);
+      await sleep(5000);
+    }
+  }
+  if (!data) throw new Error("all Overpass mirrors failed");
   const assets = [];
   for (const el of data.elements) {
     const lat = el.lat ?? el.center?.lat;
@@ -269,14 +382,15 @@ function nearestAsset(cell, assets) {
 // --- 5. Emit SQL ------------------------------------------------------------
 function toSql(rows) {
   const num = (v) => (v == null ? "NULL" : v);
+  const str = (v) => (v == null ? "NULL" : `'${String(v).replace(/'/g, "''")}'`);
   const lines = ["-- Digital Twin for Aragón (generated by scripts/build-digital-twin.mjs)"];
   for (let i = 0; i < rows.length; i += 100) {
     const values = rows
       .slice(i, i + 100)
       .map(
         (r) =>
-          `('${r.cell}',NULL,NULL,${num(r.slopeDeg)},${num(r.aspectDeg)},` +
-          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},0)`,
+          `('${r.cell}',${str(r.landCover)},${str(r.fuelType)},${num(r.slopeDeg)},${num(r.aspectDeg)},` +
+          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},${r.histFire})`,
       )
       .join(",");
     lines.push(
@@ -304,6 +418,17 @@ async function main() {
   const popMap = await fetchSectionPopulation();
   const pop7 = populationByCell(sections, popMap);
 
+  console.error("Fetching CORINE land cover (per cell)...");
+  const landCover = await fetchLandCover(cells);
+
+  console.error("Fetching EFFIS burnt areas...");
+  let burnt = new Set();
+  try {
+    burnt = await burntAreaCells(bboxOf(boundary));
+  } catch (err) {
+    console.error(`  EFFIS failed (${err.message}) — hist_fire_flag = 0`);
+  }
+
   let assets = [];
   try {
     console.error("Fetching OSM assets (Overpass)...");
@@ -317,7 +442,17 @@ async function main() {
     const t = terrain(cell, elev);
     const population = Math.round(pop7.get(cell) ?? 0);
     const density = Math.round((population / cellArea(cell, "km2")) * 10) / 10;
-    return { cell, ...t, population, density, distAssetM: nearestAsset(cell, assets) };
+    const lc = landCover.get(cell);
+    return {
+      cell,
+      ...t,
+      landCover: lc?.label ?? null,
+      fuelType: fuelFromCode(lc?.code ?? null),
+      population,
+      density,
+      distAssetM: nearestAsset(cell, assets),
+      histFire: burnt.has(cell) ? 1 : 0,
+    };
   });
 
   mkdirSync(dirname(OUT), { recursive: true });
@@ -327,7 +462,9 @@ async function main() {
   console.error(
     `\nDone. ${rows.length} cells -> ${OUT}\n` +
       `  slope populated:      ${rows.filter((r) => r.slopeDeg != null).length}\n` +
+      `  land cover populated: ${rows.filter((r) => r.landCover != null).length}\n` +
       `  population in cells:   ${totalPop}\n` +
+      `  hist-fire cells:      ${rows.filter((r) => r.histFire).length}\n` +
       `  infra (dist) populated: ${rows.filter((r) => r.distAssetM != null).length}`,
   );
 }
