@@ -50,7 +50,14 @@
       padding: 14px 16px;
       backdrop-filter: blur(6px);
     }
-    #title { top: 14px; left: 14px; max-width: 320px; }
+    #title {
+      top: 14px; left: 14px; max-width: 320px;
+      /* Cap to the viewport and scroll inside — so the panel never grows into the
+         legend on short screens (e.g. iPad landscape). */
+      max-height: calc(100dvh - 28px); overflow-y: auto; overscroll-behavior: contain;
+    }
+    #title::-webkit-scrollbar { width: 8px; }
+    #title::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 4px; }
     #title .home { display: inline-block; margin-bottom: 8px; font-size: 12px; color: var(--muted); text-decoration: none; }
     #title .home:hover { color: var(--text); }
     #title h1 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
@@ -84,7 +91,8 @@
     #info .ages .row { margin-top: 2px; }
     #info hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 
-    #legend { bottom: 18px; left: 14px; }
+    /* Legend lives at the bottom of the title panel (one scrolling column). */
+    #legend { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
     #legend .lg-title { font-size: 11px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
     #legend .lg-row { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
     #legend i { width: 16px; height: 12px; border-radius: 2px; display: inline-block; flex: none; }
@@ -114,6 +122,10 @@
     <div class="seg-label">Capas del proyecto</div>
     <div id="proj-seg"></div>
     <div id="firms-note" class="hint"></div>
+    <div id="legend">
+      <div class="lg-title" id="legend-title">Leyenda</div>
+      <div id="legend-rows"></div>
+    </div>
   </div>
 
   <div id="info" class="panel">
@@ -134,11 +146,6 @@
     <hr />
     <div class="row"><span>Lat, Lon</span><span id="in-ll">—</span></div>
     <div class="row"><span>Celda H3</span><span id="in-h3">—</span></div>
-  </div>
-
-  <div id="legend" class="panel">
-    <div class="lg-title" id="legend-title">Leyenda</div>
-    <div id="legend-rows"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
