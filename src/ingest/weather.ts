@@ -15,7 +15,7 @@ export function weatherGrid(): { lat: number; lng: number }[] {
 }
 
 /** Max coordinates per Open-Meteo GET call (URL length ~8 KB caps at ~500). */
-const BULK_CHUNK = 400;
+const BULK_CHUNK = 500;
 
 /**
  * Placeholder fuel-moisture proxy in [0,1] (higher = moister/safer). v1 uses

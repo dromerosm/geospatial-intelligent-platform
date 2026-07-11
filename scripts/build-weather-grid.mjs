@@ -9,7 +9,7 @@
 
 import { writeFileSync } from "node:fs";
 
-const SPACING_KM = 15;
+const SPACING_KM = 10;
 const OUT = "src/weather-points.json";
 const UA = "geospatial-platform/0.1 (https://github.com/dromerosm/geospatial-intelligent-platform)";
 const KM_PER_DEG = 111.32;
