@@ -6,9 +6,10 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { LIGHTNING_WATCH_HOURS } from "./config.js";
+import { ARAGON_BBOX, LIGHTNING_WATCH_HOURS } from "./config.js";
 import { activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
+import { assertFrame, decodeRayosGif, extractStrikes, fetchAemetRayosGif } from "./ingest/lightning-aemet.js";
 import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
 import { cellFor } from "./lib/h3.js";
@@ -118,6 +119,28 @@ async function ingestLightning(env: Env, strikes: { lat: number; lng: number; at
   await pruneLightningWatch(env, now);
   await writeAudit(env, "lightning", { strikes: n });
   return n;
+}
+
+// Real lightning feed: pull the AEMET rayos GIF, recover approximate strike
+// locations, keep the ones inside Aragón, and open watches. Archives the raw
+// GIF to R2 like the other feeds.
+async function runLightningAemet(env: Env): Promise<{ total: number; aragon: number }> {
+  const now = new Date().toISOString();
+  const gif = await fetchAemetRayosGif(env.AEMET_API_KEY);
+  const rawKey = `aemet-rayos/${now}.gif`;
+  await env.RAW.put(rawKey, gif);
+  const { width, height, rgba } = decodeRayosGif(gif);
+  assertFrame(rgba, width, height);
+  const strikes = extractStrikes(rgba, width, height, now);
+  const inAragon = strikes.filter(
+    (s) =>
+      s.lng > ARAGON_BBOX.west && s.lng < ARAGON_BBOX.east &&
+      s.lat > ARAGON_BBOX.south && s.lat < ARAGON_BBOX.north,
+  );
+  const aragon = await ingestLightning(env, inAragon);
+  await writeAudit(env, "ingest", { feed: "AEMET_RAYOS", total: strikes.length, aragon, rawKey });
+  console.log(`AEMET rayos: ${strikes.length} strikes, ${aragon} in Aragón`);
+  return { total: strikes.length, aragon };
 }
 
 function json(data: unknown, status = 200): Response {
@@ -244,6 +267,53 @@ export default {
       }
       case "/lightning":
         return json(await activeLightningWatches(env, new Date().toISOString()));
+      // Real AEMET feed + CPU-time instrumentation. Fetches once, then loops
+      // decode+extract N times to report a stable per-run compute cost. This is
+      // the CPU-billed portion (the network fetch is I/O and not CPU time).
+      case "/dev/ingest/lightning-aemet": {
+        const persist = url.searchParams.get("persist") === "1";
+        const iters = Math.min(50, Math.max(1, Number(url.searchParams.get("iters") ?? "20")));
+        const t0 = performance.now();
+        const gif = await fetchAemetRayosGif(env.AEMET_API_KEY);
+        const tFetch = performance.now() - t0;
+
+        const times: number[] = [];
+        let strikes: ReturnType<typeof extractStrikes> = [];
+        let dims = { width: 0, height: 0 };
+        for (let k = 0; k < iters; k++) {
+          const s = performance.now();
+          const { width, height, rgba } = decodeRayosGif(gif);
+          assertFrame(rgba, width, height);
+          strikes = extractStrikes(rgba, width, height, new Date().toISOString());
+          times.push(performance.now() - s);
+          dims = { width, height };
+        }
+        const sorted = [...times].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        const inAragon = strikes.filter(
+          (s) =>
+            s.lng > ARAGON_BBOX.west && s.lng < ARAGON_BBOX.east &&
+            s.lat > ARAGON_BBOX.south && s.lat < ARAGON_BBOX.north,
+        );
+        let persisted: unknown = null;
+        if (persist) persisted = await runLightningAemet(env);
+        return json({
+          bytes: gif.byteLength,
+          image: dims,
+          strikes: strikes.length,
+          aragon: inAragon.length,
+          cpu_ms: {
+            decode_extract_cold_first_run: +times[0].toFixed(3),
+            decode_extract_min: +sorted[0].toFixed(3),
+            decode_extract_median: +median.toFixed(3),
+            decode_extract_max: +sorted[sorted.length - 1].toFixed(3),
+            iters,
+          },
+          fetch_ms: +tFetch.toFixed(1),
+          persisted,
+          sample: strikes.slice(0, 20),
+        });
+      }
       case "/dev/lightning/test": {
         // Inject one test strike (mechanism demo until a real feed is wired).
         const lat = Number(url.searchParams.get("lat") ?? "41.65");

@@ -18,7 +18,8 @@
     "map:deploy": "wrangler pages deploy prototype --project-name geospatial-platform-map --branch main --commit-dirty=true"
   },
   "dependencies": {
-    "h3-js": "^4.1.0"
+    "h3-js": "^4.1.0",
+    "omggif": "^1.0.10"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260708.1",

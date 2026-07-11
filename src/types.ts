@@ -10,6 +10,7 @@ export interface Env {
   API_RL: RateLimit;
   // Secrets (via .dev.vars locally / `wrangler secret put` in prod).
   FIRMS_MAP_KEY: string;
+  AEMET_API_KEY: string;
 }
 
 /**
