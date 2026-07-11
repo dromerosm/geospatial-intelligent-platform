@@ -148,9 +148,10 @@ Design choices:
 - **FWI System** (`src/lib/fwi.ts`) computes the Canadian fire-weather indices daily from
   the grid's noon forecast — FFMC/DMC/DC/ISI/BUI/FWI (`fire_weather.ffmc…fwi`, migration
   0007, cron `0 12 * * *`). This replaces the RH fuel-moisture proxy and gives a drought
-  signal (DC). The moisture codes accumulate day to day: fresh installs start from spring
-  defaults and climb over ~weeks; a one-off spin-up over historical weather would make DC
-  realistic immediately. (Old `fuel_moisture_proxy` column kept but superseded by FFMC.)
+  signal (DC). The moisture codes accumulate day to day; a one-off spin-up over 90 days of
+  historical daily weather (Open-Meteo archive, `/dev/compute/fwi-spinup`) has been run so
+  DC is already realistic (~530 for July Aragón, vs ~15 from cold-start). The daily cron
+  continues from there. (Old `fuel_moisture_proxy` column kept but superseded by FFMC.)
 - Fire weather is a **surface-uniform ~15 km grid clipped to Aragón** (213 points,
   `scripts/build-weather-grid.mjs` → `src/weather-points.json`), refreshed every 3 h with a
   3-day hourly forecast per point (`fire_weather.forecast_json`). Background layer only:

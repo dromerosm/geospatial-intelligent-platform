@@ -9,7 +9,7 @@
 import { LIGHTNING_WATCH_HOURS } from "./config.js";
 import { activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
-import { fetchFireWeather } from "./ingest/weather.js";
+import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
 import { cellFor } from "./lib/h3.js";
 import type { Env } from "./types.js";
@@ -60,6 +60,48 @@ async function runFwi(env: Env): Promise<void> {
   const n = await updateFwi(env, updates);
   await writeAudit(env, "fwi", { cells: n, month });
   console.log(`FWI: ${n} cells advanced`);
+}
+
+// One-off FWI spin-up: iterate the moisture codes over ~90 days of historical
+// daily weather (Open-Meteo archive) so DC/DMC (drought) are realistic today
+// instead of starting from spring defaults. Run once; the daily cron continues.
+async function runFwiSpinup(env: Env, days = 90): Promise<number> {
+  const grid = weatherGrid();
+  const end = new Date(Date.now() - 86_400_000); // yesterday
+  const start = new Date(end.getTime() - days * 86_400_000);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const lats = grid.map((p) => p.lat.toFixed(3)).join(",");
+  const lngs = grid.map((p) => p.lng.toFixed(3)).join(",");
+  const url =
+    `https://archive-api.open-meteo.com/v1/archive?latitude=${lats}&longitude=${lngs}` +
+    `&start_date=${iso(start)}&end_date=${iso(end)}` +
+    `&daily=temperature_2m_max,relative_humidity_2m_mean,wind_speed_10m_mean,precipitation_sum` +
+    `&wind_speed_unit=kmh`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo archive ${res.status}: ${await res.text()}`);
+  const body = await res.json<any>();
+  const items = Array.isArray(body) ? body : [body];
+
+  const updates = items.map((item, idx) => {
+    const d = item.daily;
+    const codes = { ...FWI_START };
+    let last = { ...FWI_START, isi: 0, bui: 0, fwi: 0 };
+    for (let k = 0; k < d.time.length; k++) {
+      const temp = d.temperature_2m_max[k];
+      const rh = d.relative_humidity_2m_mean[k];
+      const wind = d.wind_speed_10m_mean[k];
+      if (temp == null || rh == null || wind == null) continue;
+      last = computeFwi({
+        temp, rh, wind, rain: d.precipitation_sum[k] ?? 0, month: Number(d.time[k].slice(5, 7)),
+        ffmc0: codes.ffmc, dmc0: codes.dmc, dc0: codes.dc,
+      });
+      codes.ffmc = last.ffmc; codes.dmc = last.dmc; codes.dc = last.dc;
+    }
+    return { cell: cellFor(grid[idx].lat, grid[idx].lng), ...last };
+  });
+  const n = await updateFwi(env, updates);
+  await writeAudit(env, "fwi_spinup", { cells: n, days });
+  return n;
 }
 
 // Open/refresh a lightning watch on each strike's H3 cell, then prune expired
@@ -196,6 +238,10 @@ export default {
       case "/dev/compute/fwi":
         await runFwi(env);
         return json({ ran: "fwi" });
+      case "/dev/compute/fwi-spinup": {
+        const cells = await runFwiSpinup(env);
+        return json({ ran: "fwi-spinup", cells });
+      }
       case "/lightning":
         return json(await activeLightningWatches(env, new Date().toISOString()));
       case "/dev/lightning/test": {

@@ -27,7 +27,7 @@ The goal is a **fast, relevant, shippable MVP**, not the full platform. Everythi
 
 ### Explicitly deferred (fast-follow, not v1)
 
-- **Data backlog** (noted for the future): the live **lightning feed** (mechanism is built — see Lightning Watch), extra Digital Twin **context layers** (protected areas, water, power lines, roads via OSM), **Meteosat MTG** and **Copernicus** operational products (harder access/auth), a real **fuel-load / Scott & Burgan fuel model**, and an FWI **historical spin-up** so drought codes are realistic immediately.
+- **Data backlog** (noted for the future): the live **lightning feed** (mechanism is built — see Lightning Watch), extra Digital Twin **context layers** (protected areas, water, power lines, roads via OSM), **Meteosat MTG** and **Copernicus** operational products (harder access/auth), and a real **fuel-load / Scott & Burgan fuel model**.
 - Multi-agent AI specialists, Teams/Email channels, multi-region, other hazards (floods/storms/etc.).
 - Vectorize/RAG over historical incidents (add when there is history to retrieve).
 
