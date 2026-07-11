@@ -1,0 +1,19 @@
+# Cloudflare Pages headers. Cloudflare serves Brotli/gzip automatically.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  # Only restrict framing (safe partial CSP) — lets the project landing embed the map.
+  Content-Security-Policy: frame-ancestors 'self' https://*.diegoromero.es
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+# The cell dataset is regenerated on rebuilds; cache briefly, revalidate in the background.
+/data/*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/favicon.svg
+  Cache-Control: public, max-age=604800
+
+# Always revalidate the document so redeploys show up immediately.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate

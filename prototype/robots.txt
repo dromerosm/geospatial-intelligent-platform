@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://geospatial-platform.diegoromero.es/mapa/sitemap.xml

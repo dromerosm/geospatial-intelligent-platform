@@ -3,9 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Dev prototype: page + data are regenerated often, so don't cache the doc. -->
-  <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Digital Twin — Aragón (H3)</title>
+  <title>Densidad de población y riesgo de incendio · Aragón</title>
+  <meta name="description" content="Mapa interactivo del Digital Twin de Aragón: densidad de población, envejecimiento, combustible e histórico de incendios sobre 9.408 celdas H3, con datos del INE 2025, CORINE Land Cover y EFFIS." />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://geospatial-platform.diegoromero.es/mapa/" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="favicon.svg" />
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="es_ES" />
+  <meta property="og:site_name" content="Geospatial Intelligence Platform" />
+  <meta property="og:title" content="Densidad de población y riesgo de incendio · Aragón" />
+  <meta property="og:description" content="Mapa interactivo del Digital Twin de Aragón: población, envejecimiento, combustible e histórico de incendios sobre 9.408 celdas H3 (INE 2025, CORINE, EFFIS)." />
+  <meta property="og:url" content="https://geospatial-platform.diegoromero.es/mapa/" />
+  <meta name="twitter:card" content="summary" />
+  <!-- Perf: warm up the CDN + tile connections early -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="preconnect" href="https://a.basemaps.cartocdn.com" crossorigin />
+  <link rel="dns-prefetch" href="https://b.basemaps.cartocdn.com" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     :root {

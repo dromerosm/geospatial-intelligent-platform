@@ -57,6 +57,9 @@ function* parseTuples(sql) {
 
 const val = (s) => (s == null || s === "" || s === "NULL" ? null : s);
 const num = (s) => (val(s) == null ? null : Number(s));
+// Round to 5 decimal places (~1 m). H3 boundary coords come at ~15 dp — pointless
+// precision for ~5 km² cells that roughly halves the payload (and it gzips better).
+const r5 = (n) => Math.round(n * 1e5) / 1e5;
 
 function main() {
   const sql = readFileSync(SQL_IN, "utf8");
@@ -86,10 +89,11 @@ function main() {
         dist_asset_m: num(dist),
         hist_fire: num(hist) ? 1 : 0,
         municipio: val(municipio),
-        lat: Math.round(lat * 1e5) / 1e5,
-        lng: Math.round(lng * 1e5) / 1e5,
+        lat: r5(lat),
+        lng: r5(lng),
       },
-      geometry: { type: "Polygon", coordinates: [cellToBoundary(h3, true)] }, // [lng,lat] closed ring
+      // [lng,lat] closed ring, coords rounded to ~1 m to keep the payload small.
+      geometry: { type: "Polygon", coordinates: [cellToBoundary(h3, true).map(([x, y]) => [r5(x), r5(y)])] },
     });
     densMin = Math.min(densMin, dens);
     densMax = Math.max(densMax, dens);
