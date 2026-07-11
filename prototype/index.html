@@ -288,9 +288,9 @@
       ovSeg.appendChild(b);
     });
 
-    // --- Fire weather (Open-Meteo 15×15 grid via /fire-weather) ---------------
+    // --- Fire weather (Open-Meteo grid clipped to Aragón, via /fire-weather) --
     // Rows are keyed only by H3 cell; load h3-js lazily (first toggle) to place
-    // the 225 points, so the default page load stays light.
+    // the grid points, so the default page load stays light.
     let _h3;
     function ensureH3() {
       if (_h3) return Promise.resolve(_h3);
