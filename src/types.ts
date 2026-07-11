@@ -6,6 +6,8 @@ export interface Env {
   CONFIG: KVNamespace;
   RAW: R2Bucket;
   REGION: string;
+  // Hard rate limiter for the API endpoints (native Workers Rate Limiting).
+  API_RL: RateLimit;
   // Secrets (via .dev.vars locally / `wrangler secret put` in prod).
   FIRMS_MAP_KEY: string;
 }

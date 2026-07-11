@@ -20,6 +20,11 @@
   // Bundle the landing page (src/landing.html) as an importable text module.
   "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
 
+  // Hard rate limit for the API endpoints while in testing (per client IP).
+  "ratelimits": [
+    { "name": "API_RL", "namespace_id": "1001", "simple": { "limit": 10, "period": 10 } }
+  ],
+
   // --- Bindings ---------------------------------------------------------
   // The *_id values are placeholders. Create the resources once and paste
   // the returned ids here (see README "One-time setup").

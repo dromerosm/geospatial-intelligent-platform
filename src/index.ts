@@ -49,6 +49,35 @@ function html(body: string): Response {
   });
 }
 
+function text(body: string): Response {
+  return new Response(body, {
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=86400" },
+  });
+}
+
+const ROBOTS_TXT = `User-agent: *
+Allow: /
+`;
+
+// llms.txt — machine-readable site summary for AI agents (llmstxt.org).
+const LLMS_TXT = `# Geospatial Intelligence Platform
+
+> Wildfire early-warning platform for Aragón (Spain), built entirely on Cloudflare. It enriches authoritative public data with an H3 territorial digital twin and an explainable, deterministic decision engine.
+
+## API (read-only, JSON)
+- [Health](https://geospatial-platform.diegoromero.es/health): service status
+- [Digital Twin](https://geospatial-platform.diegoromero.es/digital-twin): territorial digital-twin summary (append ?cell=<h3> for one cell)
+- [Observations](https://geospatial-platform.diegoromero.es/observations): latest satellite detections
+- [Fire weather](https://geospatial-platform.diegoromero.es/fire-weather): per-cell fire weather
+
+## Pages
+- [Landing](https://geospatial-platform.diegoromero.es/): project status, data sources and architecture
+- [Map](https://geospatial-platform.diegoromero.es/mapa): interactive digital-twin map
+
+## Data sources
+NASA FIRMS (hotspots), Open-Meteo (fire weather), INE Censo Anual 2025 (population by census section), CORINE Land Cover (fuel), EFFIS (fire history), OpenStreetMap and Open-Elevation.
+`;
+
 export default {
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const job = controller.cron === "0 * * * *" ? runWeather(env) : runFirms(env);
@@ -70,9 +99,30 @@ export default {
       return fetch(new Request(target, req));
     }
 
+    // Hard rate limit (per client IP) on the API + dev endpoints while testing.
+    // Static pages (/, robots, llms, /mapa) are intentionally not limited.
+    if (
+      pathname === "/health" || pathname === "/observations" ||
+      pathname === "/fire-weather" || pathname === "/digital-twin" ||
+      pathname.startsWith("/dev/")
+    ) {
+      const ip = req.headers.get("CF-Connecting-IP") ?? "anon";
+      const { success } = await env.API_RL.limit({ key: ip });
+      if (!success) {
+        return new Response(JSON.stringify({ error: "rate limit exceeded — slow down" }), {
+          status: 429,
+          headers: { "content-type": "application/json; charset=utf-8", "retry-after": "60", "cache-control": "no-store" },
+        });
+      }
+    }
+
     switch (pathname) {
       case "/":
         return html(LANDING);
+      case "/robots.txt":
+        return text(ROBOTS_TXT);
+      case "/llms.txt":
+        return text(LLMS_TXT);
       case "/health":
         return json({ ok: true, service: "geospatial-platform", region: env.REGION });
       case "/observations":

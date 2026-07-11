@@ -25,14 +25,14 @@
     :root {
       --bg: #ffffff; --text: #000000; --muted: #555555; --faint: #6b6b6b;
       --accent: #0070f3; --border: rgba(0,0,0,.12); --card: #ffffff; --card-alt: #fafafa;
-      --ok: #1a7f37; --next: #0060d0; --wait: #666666;
+      --ok: #1a7f37; --next: #0060d0; --wait: #666666; --warn: #c2410c;
       --maxw: 46rem;
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --bg: #0a0a0a; --text: #ededed; --muted: #a1a1a1; --faint: #8a8a8a;
         --accent: #3b9eff; --border: rgba(255,255,255,.14); --card: #111111; --card-alt: #141414;
-        --ok: #3fb950; --next: #3b9eff; --wait: #8a8a8a;
+        --ok: #3fb950; --next: #3b9eff; --wait: #8a8a8a; --warn: #fb923c;
       }
     }
     * { box-sizing: border-box; }
@@ -124,6 +124,14 @@
     }
     .endpoint code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .86rem; color: var(--text); }
     .endpoint span { color: var(--faint); font-size: .82rem; }
+
+    .notice { border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 12px; background: var(--card); padding: 1rem 1.2rem; }
+    .notice p { color: var(--muted); }
+    .notice .emergency { color: var(--text); font-size: 1.05rem; margin-bottom: .4rem; }
+    .notice a { text-decoration: underline; }
+    .notice ul { margin: .5rem 0 0; padding-left: 1.15rem; color: var(--muted); font-size: .92rem; list-style: none; }
+    .notice li { margin: .3rem 0; padding-left: 0; }
+    .notice li strong { color: var(--text); }
 
     footer { border-top: 1px solid var(--border); padding: 1.75rem 0; color: var(--faint); font-size: .86rem; }
     footer a { text-decoration: underline; } /* distinguishable in a text block, not by colour alone */
@@ -234,6 +242,24 @@
         <a class="endpoint" href="/digital-twin"><code>GET /digital-twin</code><span>Resumen del gemelo digital</span></a>
         <a class="endpoint" href="/observations"><code>GET /observations</code><span>Últimas detecciones</span></a>
         <a class="endpoint" href="/fire-weather"><code>GET /fire-weather</code><span>Meteorología de incendio por celda</span></a>
+      </div>
+    </section>
+
+    <section id="aviso" aria-labelledby="aviso-h">
+      <p class="eyebrow" style="color:var(--warn)">Aviso importante</p>
+      <h2 id="aviso-h">Trabajo demostrativo</h2>
+      <div class="notice">
+        <p>Este sitio es una <strong>prueba de concepto en desarrollo</strong>, con fines técnicos y educativos.
+        <strong>No es un sistema operativo de emergencias</strong> y <strong>no sustituye en modo alguno</strong>
+        a las fuentes oficiales de Protección Civil, a los servicios de emergencia ni a ninguna otra información
+        oficial. No debe utilizarse para tomar decisiones reales de seguridad o emergencia.</p>
+        <p class="emergency"><strong>Ante una emergencia o un incendio forestal, llama al <a href="tel:112">112</a>.</strong></p>
+        <ul>
+          <li><strong>112</strong> — Emergencias (bomberos, protección civil y sanitarias). España y toda la UE.</li>
+          <li><strong>Bomberos</strong> — se movilizan a través del <a href="tel:112">112</a>.</li>
+          <li><strong>Protección Civil</strong> (Gobierno de España) — <a href="https://www.proteccioncivil.es/" target="_blank" rel="noopener">proteccioncivil.es ↗</a></li>
+          <li><strong>Gobierno de Aragón</strong> — <a href="https://www.aragon.es/" target="_blank" rel="noopener">aragon.es ↗</a></li>
+        </ul>
       </div>
     </section>
   </main>
