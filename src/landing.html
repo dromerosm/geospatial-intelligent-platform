@@ -23,9 +23,9 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 29 9.5v13L16 30 3 22.5v-13z' fill='%230070f3'/%3E%3C/svg%3E">
   <style>
     :root {
-      --bg: #ffffff; --text: #000000; --muted: #555555; --faint: #767676;
+      --bg: #ffffff; --text: #000000; --muted: #555555; --faint: #6b6b6b;
       --accent: #0070f3; --border: rgba(0,0,0,.12); --card: #ffffff; --card-alt: #fafafa;
-      --ok: #1a7f37; --next: #0070f3; --wait: #8a8a8a;
+      --ok: #1a7f37; --next: #0060d0; --wait: #666666;
       --maxw: 46rem;
     }
     @media (prefers-color-scheme: dark) {
@@ -119,6 +119,7 @@
     .endpoint span { color: var(--faint); font-size: .82rem; }
 
     footer { border-top: 1px solid var(--border); padding: 1.75rem 0; color: var(--faint); font-size: .86rem; }
+    footer a { text-decoration: underline; } /* distinguishable in a text block, not by colour alone */
     footer .wrap { display: flex; flex-wrap: wrap; gap: .5rem 1rem; justify-content: space-between; }
   </style>
   <script type="application/ld+json">
@@ -138,7 +139,7 @@
 <body>
   <header>
     <div class="wrap bar">
-      <a class="brand" href="/" aria-label="Geospatial Intelligence Platform, inicio">
+      <a class="brand" href="/">
         <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 29 9.5v13L16 30 3 22.5v-13z" fill="var(--accent)"/></svg>
         Geospatial Platform <small class="nav-hide">· Aragón</small>
       </a>
