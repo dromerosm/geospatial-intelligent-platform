@@ -19,6 +19,10 @@ No necesita Cloudflare, Worker ni D1: lee un único GeoJSON generado a partir de
   cliente, ~213 puntos → 9.408 celdas). Al activar **"Meteo (viento)"** esta capa se
   **auto-selecciona** (ver el viento colorea las celdas por temperatura, con las flechas
   encima). Sin datos → gris; solo carga en `/mapa` (mismo-origin).
+- **Peligro (FWI)** — Índice canadiense de peligro (`fwi` de `/fire-weather`) con las
+  **clases de peligro EFFIS** (muy bajo <5,2 · bajo · moderado · alto · muy alto · extremo
+  ≥50), rampa verde→rojo. Mismo relleno nearest-neighbor y misma carga de meteo que
+  Temperatura; integra temp, HR, viento y lluvia en un solo número. Sin datos → gris.
 
 (El histórico de incendios EFFIS ya no es una CAPA: está como overlay "EFFIS histórico"
 en *Capas del proyecto*.)
@@ -89,17 +93,15 @@ en `/mapa`, no en `.pages.dev`/local, donde degradan sin romper):
 
 ### Meteo — pendiente para el futuro
 
-La CAPA **Temperatura** (aire 2 m, relleno nearest-neighbor) ya está — ver la sección de
-capas. Ideas para mejorarla o extenderla, por orden de valor:
+Las CAPAs **Temperatura** y **Peligro (FWI)** (aire 2 m / índice FWI, relleno
+nearest-neighbor) ya están — ver la sección de capas. Ideas para mejorarlas o extender,
+por orden de valor:
 
 - **Corrección por altitud (*lapse rate*)** — es el límite de calidad real, no NN vs IDW.
   El NN por distancia horizontal ignora la cota; en montaña (Pirineo/Ibérica) puede sesgar.
   Exponiendo la elevación por celda en el GeoJSON (el twin ya la tiene) y guardando la cota
   de cada punto de meteo, un IDW + corrección de ~6,5 °C/km daría un campo más fiel. En la
   práctica el sesgo hoy es suave porque las muestras de Open-Meteo ya llevan su altitud.
-- **CAPA "Peligro (FWI)"** — `/fire-weather` ya devuelve `ffmc`, `dc`, `fwi` (índices
-  canadienses de peligro) por punto. Una capa con el **mismo relleno NN** coloreada por
-  `fwi` sería más on-theme que la temperatura cruda (integra temp, HR, viento y lluvia).
 - **Otras variables como campo** (HR, viento) — mismo patrón NN sobre `rh_pct` / `wind_kmh`.
 - **Previsión a 3 días (hover)** — la ingesta guarda `forecast_json` (72 pasos horarios) por
   punto, pero `currentFireWeather` lo **excluye** de `/fire-weather` (~213 filas × 72 pasos =

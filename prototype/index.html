@@ -191,6 +191,11 @@
     const T_COLORS = ["#4575b4","#91bfdb","#e0f3f8","#fee090","#fc8d59","#d73027"];
     const T_LABELS = ["< 10","10 – 20","20 – 25","25 – 30","30 – 35","≥ 35"];
 
+    // --- Fire Weather Index (Canadian FWI) — EFFIS danger classes -------------
+    const FWI_BREAKS = [0, 5.2, 11.2, 21.3, 38, 50];
+    const FWI_COLORS = ["#1a9850","#91cf60","#fee08b","#fc8d59","#d73027","#7f0000"];
+    const FWI_LABELS = ["Muy bajo","Bajo","Moderado","Alto","Muy alto","Extremo"];
+
     // Layers: colorOf(properties) -> fill; legend rows; legend title.
     const LAYERS = {
       density: {
@@ -218,6 +223,14 @@
         needs: "weather",
         colorOf: (p) => (p._temp == null ? NODATA : breakColor(p._temp, T_BREAKS, T_COLORS)),
         legend: breakLegend(T_COLORS, T_LABELS).concat([{ color: NODATA, label: "sin dato" }]),
+      },
+      // Fire Weather Index (danger): same nearest-point fill, EFFIS classes.
+      fwi: {
+        label: "Peligro (FWI)",
+        legendTitle: "Índice FWI · clases EFFIS",
+        needs: "weather",
+        colorOf: (p) => (p._fwi == null ? NODATA : breakColor(p._fwi, FWI_BREAKS, FWI_COLORS)),
+        legend: breakLegend(FWI_COLORS, FWI_LABELS).concat([{ color: NODATA, label: "sin dato" }]),
       },
     };
     let ACT = LAYERS.density;
@@ -337,7 +350,7 @@
     // Shared fire-weather load — one fetch feeds both the wind arrows and the
     // temperature choropleth. Resolves each H3-keyed row to its centroid coords.
     let FC = null;          // choropleth features (set when the GeoJSON loads)
-    let tempReady = false;  // per-cell temperature computed?
+    let wxReady = false;    // per-cell weather (temp + FWI) computed?
     let _weather = null;    // { pts: [{lat,lng,row}], t30 }
     async function loadWeather() {
       if (_weather) return _weather;
@@ -354,21 +367,22 @@
       return _weather;
     }
 
-    // Fill every cell's air temperature from the nearest weather point (equirect. NN).
-    function computeTempByCell() {
+    // Fill every cell from the nearest weather point (equirect. NN): temp + FWI.
+    function computeWxByCell() {
       if (!FC || !_weather) return;
       for (const f of FC.features) {
         const { lat, lng } = f.properties;
         const kx = Math.cos((lat * Math.PI) / 180);
-        let best = Infinity, t = null;
+        let best = Infinity, near = null;
         for (const p of _weather.pts) {
           const dy = lat - p.lat, dx = (lng - p.lng) * kx;
           const d = dy * dy + dx * dx;
-          if (d < best) { best = d; t = p.row.temp_c; }
+          if (d < best) { best = d; near = p.row; }
         }
-        f.properties._temp = t;
+        f.properties._temp = near ? near.temp_c : null;
+        f.properties._fwi = near ? near.fwi : null;
       }
-      tempReady = true;
+      wxReady = true;
     }
 
     let meteoLayer = null;
@@ -403,8 +417,8 @@
       ACT = LAYERS[key];
       [...seg.children].forEach((b) => b.classList.toggle("active", b === btn));
       renderLegend();
-      if (ACT.needs === "weather" && !tempReady) {
-        try { await loadWeather(); computeTempByCell(); } catch { /* leave cells as sin dato */ }
+      if (ACT.needs === "weather" && !wxReady) {
+        try { await loadWeather(); computeWxByCell(); } catch { /* leave cells as sin dato */ }
       }
       if (geoLayer) geoLayer.setStyle((f) => styleOf(f.properties));
     }
