@@ -186,6 +186,11 @@
     const FUEL_COLOR = Object.fromEntries(FUEL.map((f) => [f.key, f.color]));
     const FUEL_LABEL = Object.fromEntries(FUEL.map((f) => [f.key, f.label]));
 
+    // --- Air temperature 2 m (°C) — cool→warm; nearest fire-weather point ------
+    const T_BREAKS = [-100, 10, 20, 25, 30, 35];
+    const T_COLORS = ["#4575b4","#91bfdb","#e0f3f8","#fee090","#fc8d59","#d73027"];
+    const T_LABELS = ["< 10","10 – 20","20 – 25","25 – 30","30 – 35","≥ 35"];
+
     // Layers: colorOf(properties) -> fill; legend rows; legend title.
     const LAYERS = {
       density: {
@@ -205,6 +210,14 @@
         legendTitle: "Clase de combustible",
         colorOf: (p) => FUEL_COLOR[p.fuel_type] ?? NODATA,
         legend: FUEL.map((f) => ({ color: f.color, label: f.label })).concat([{ color: NODATA, label: "sin dato" }]),
+      },
+      // Air temperature: nearest of the 213 fire-weather points, computed on demand.
+      temp: {
+        label: "Temperatura",
+        legendTitle: "Temperatura aire 2 m (°C)",
+        needs: "weather",
+        colorOf: (p) => (p._temp == null ? NODATA : breakColor(p._temp, T_BREAKS, T_COLORS)),
+        legend: breakLegend(T_COLORS, T_LABELS).concat([{ color: NODATA, label: "sin dato" }]),
       },
     };
     let ACT = LAYERS.density;
@@ -320,22 +333,54 @@
       `${r.temp_c}°C · HR ${r.rh_pct}% · viento ${r.wind_kmh} km/h ${dirLabel(r.wind_dir_deg)}` +
       (r.triple30 ? " · ⚠ Triple-30" : "");
     const meteoNote = document.getElementById("meteo-note");
-    let meteoLayer = null;
-    async function loadMeteo() {
-      if (meteoLayer) return meteoLayer;
-      let h3;
-      try { h3 = await ensureH3(); } catch { meteoNote.textContent = "Meteo: no se pudo cargar h3-js"; return null; }
+
+    // Shared fire-weather load — one fetch feeds both the wind arrows and the
+    // temperature choropleth. Resolves each H3-keyed row to its centroid coords.
+    let FC = null;          // choropleth features (set when the GeoJSON loads)
+    let tempReady = false;  // per-cell temperature computed?
+    let _weather = null;    // { pts: [{lat,lng,row}], t30 }
+    async function loadWeather() {
+      if (_weather) return _weather;
+      const h3 = await ensureH3();
       const rows = await fetch("/fire-weather").then((r) => (r.ok ? r.json() : [])).catch(() => []);
-      const markers = [];
+      const pts = [];
       let t30 = 0;
       for (const r of rows) {
         let ll; try { ll = h3.cellToLatLng(r.h3_cell); } catch { continue; }
         if (r.triple30) t30++;
-        markers.push(L.marker(ll, { icon: windIcon(r), keyboard: false }).bindTooltip(meteoTip(r), { sticky: true }));
+        pts.push({ lat: ll[0], lng: ll[1], row: r });
       }
+      _weather = { pts, t30 };
+      return _weather;
+    }
+
+    // Fill every cell's air temperature from the nearest weather point (equirect. NN).
+    function computeTempByCell() {
+      if (!FC || !_weather) return;
+      for (const f of FC.features) {
+        const { lat, lng } = f.properties;
+        const kx = Math.cos((lat * Math.PI) / 180);
+        let best = Infinity, t = null;
+        for (const p of _weather.pts) {
+          const dy = lat - p.lat, dx = (lng - p.lng) * kx;
+          const d = dy * dy + dx * dx;
+          if (d < best) { best = d; t = p.row.temp_c; }
+        }
+        f.properties._temp = t;
+      }
+      tempReady = true;
+    }
+
+    let meteoLayer = null;
+    async function loadMeteo() {
+      if (meteoLayer) return meteoLayer;
+      let w;
+      try { w = await loadWeather(); } catch { meteoNote.textContent = "Meteo: no se pudo cargar h3-js"; return null; }
+      const markers = w.pts.map((p) =>
+        L.marker([p.lat, p.lng], { icon: windIcon(p.row), keyboard: false }).bindTooltip(meteoTip(p.row), { sticky: true }));
       meteoLayer = L.layerGroup(markers);
-      meteoNote.textContent = rows.length
-        ? `Meteo: ${markers.length} puntos · ${t30} en Triple-30`
+      meteoNote.textContent = w.pts.length
+        ? `Meteo: ${w.pts.length} puntos · ${w.t30} en Triple-30`
         : "Meteo: solo en el subdominio del proyecto";
       return meteoLayer;
     }
@@ -352,11 +397,15 @@
 
     // Layer selector.
     const seg = document.getElementById("seg");
+    const capaBtn = {};
     let geoLayer = null;
-    function selectLayer(key, btn) {
+    async function selectLayer(key, btn) {
       ACT = LAYERS[key];
       [...seg.children].forEach((b) => b.classList.toggle("active", b === btn));
       renderLegend();
+      if (ACT.needs === "weather" && !tempReady) {
+        try { await loadWeather(); computeTempByCell(); } catch { /* leave cells as sin dato */ }
+      }
       if (geoLayer) geoLayer.setStyle((f) => styleOf(f.properties));
     }
     Object.entries(LAYERS).forEach(([key, layer], i) => {
@@ -364,6 +413,7 @@
       b.textContent = layer.label;
       b.onclick = () => selectLayer(key, b);
       if (i === 0) b.classList.add("active");
+      capaBtn[key] = b;
       seg.appendChild(b);
     });
 
@@ -394,6 +444,7 @@
     fetch("data/aragon-density.geojson")
       .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then((fc) => {
+        FC = fc; // shared with the temperature nearest-neighbour fill
         const m = fc.metadata || {};
         set("st-cells", fmt(m.cells ?? fc.features.length));
         set("st-pop", fmt(m.populationTotal ?? 0));
@@ -451,7 +502,7 @@
           meteo: { label: "Meteo (viento)", get: loadMeteo },
         };
         const projSeg = document.getElementById("proj-seg");
-        Object.values(PROJ).forEach((ov) => {
+        Object.entries(PROJ).forEach(([key, ov]) => {
           const b = document.createElement("button");
           b.textContent = ov.label;
           b.onclick = async () => {
@@ -460,6 +511,8 @@
             const on = map.hasLayer(layer);
             if (on) map.removeLayer(layer); else layer.addTo(map);
             b.classList.toggle("active", !on);
+            // Enabling wind also colours the cells by temperature (same weather load).
+            if (key === "meteo" && !on) selectLayer("temp", capaBtn.temp);
           };
           projSeg.appendChild(b);
         });

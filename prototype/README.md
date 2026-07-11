@@ -14,7 +14,14 @@ No necesita Cloudflare, Worker ni D1: lee un único GeoJSON generado a partir de
   estepa a ~25.000 en Zaragoza).
 - **% mayores 65+** — rampa BuPu; celdas sin población en gris (evita "0 %" engañoso).
 - **Combustible** — clase ordinal derivada de CORINE (nulo → muy alto), rampa de riesgo.
-- **Incendio histórico** — binario: área quemada EFFIS (87 celdas) resaltada.
+- **Temperatura** (aire 2 m, °C) — rampa cool→warm. Se calcula on-demand: cada celda toma
+  el `temp_c` del punto de `/fire-weather` **más cercano** (nearest-neighbor equirect. en
+  cliente, ~213 puntos → 9.408 celdas). Al activar **"Meteo (viento)"** esta capa se
+  **auto-selecciona** (ver el viento colorea las celdas por temperatura, con las flechas
+  encima). Sin datos → gris; solo carga en `/mapa` (mismo-origin).
+
+(El histórico de incendios EFFIS ya no es una CAPA: está como overlay "EFFIS histórico"
+en *Capas del proyecto*.)
 
 El panel de hover muestra, además: **población desglosada por bandas de edad**
 (0-14 / 15-64 / 65+ con % ), uso del suelo, combustible, pendiente, distancia al
