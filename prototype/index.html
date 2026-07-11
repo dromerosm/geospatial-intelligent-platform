@@ -61,14 +61,14 @@
     #title .stats span { color: var(--muted); font-size: 11px; }
     #title .seg-label { margin-top: 13px; font-size: 11px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.04em; }
-    #seg, #base-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-    #seg button, #base-seg button {
+    #seg, #base-seg, #ov-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+    #seg button, #base-seg button, #ov-seg button {
       font: inherit; font-size: 12px; color: var(--muted);
       background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
       border-radius: 6px; padding: 5px 9px; cursor: pointer;
     }
-    #seg button:hover, #base-seg button:hover { color: var(--text); border-color: var(--muted); }
-    #seg button.active, #base-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #seg button:hover, #base-seg button:hover, #ov-seg button:hover { color: var(--text); border-color: var(--muted); }
+    #seg button.active, #base-seg button.active, #ov-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     #info {
       top: 14px; right: 14px; min-width: 232px; font-size: 12px;
@@ -108,6 +108,8 @@
     <div id="seg"></div>
     <div class="seg-label">Base</div>
     <div id="base-seg"></div>
+    <div class="seg-label">Capas GIBS (satélite)</div>
+    <div id="ov-seg"></div>
   </div>
 
   <div id="info" class="panel">
@@ -205,30 +207,51 @@
     L.control.zoom({ position: "bottomright" }).addTo(map);
     window.addEventListener("resize", () => map.invalidateSize());
 
-    // Basemaps: CARTO dark (default) + NASA GIBS VIIRS true-colour satellite.
-    // GIBS daily true-colour tops out at native zoom 9 (~250 m); Leaflet upscales
-    // beyond it. Use imagery from 2 days ago for reliable global availability.
-    const gibsDate = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+    // --- Basemaps + NASA GIBS satellite layers --------------------------------
+    // Shared date = yesterday: the latest fully-processed day for VIIRS reflectance
+    // (today lags a few hours), per GIBS WMTS capabilities. The fire/aerosol layers
+    // also have that day, so one date keeps a coherent snapshot.
+    const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    const GIBS_WMTS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
+    const GIBS_WMS = "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi";
+    const gibsAttr = `Imagery © NASA EOSDIS GIBS (${GIBS_DATE})`;
+
+    // Raster reflectance basemaps (WMTS). Native zoom from the tile-matrix Level.
+    function gibsWmts(id, matrix, ext) {
+      return L.tileLayer(`${GIBS_WMTS}/${id}/default/${GIBS_DATE}/${matrix}/{z}/{y}/{x}.${ext}`, {
+        maxZoom: 19, maxNativeZoom: Number(matrix.match(/Level(\d+)/)[1]),
+        bounds: [[-85.06, -180], [85.06, 180]], attribution: gibsAttr,
+      });
+    }
+
+    // Overlays (fires, aerosol) are vector-tile-only in WMTS, so pull them as
+    // transparent PNG via GIBS WMS. Render in a pane ABOVE the choropleth, with
+    // pointer-events none so cell hover keeps working.
+    map.createPane("gibs");
+    map.getPane("gibs").style.zIndex = 450;
+    map.getPane("gibs").style.pointerEvents = "none";
+    function gibsWms(id) {
+      return L.tileLayer.wms(GIBS_WMS, {
+        layers: id, format: "image/png", transparent: true, time: GIBS_DATE,
+        pane: "gibs", maxZoom: 19, attribution: gibsAttr,
+      });
+    }
+
     const BASES = {
-      oscuro: {
-        label: "Oscuro",
-        layer: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
-          attribution: "© OpenStreetMap · © CARTO", subdomains: "abcd", maxZoom: 19,
-        }),
-      },
-      satelite: {
-        label: "Satélite",
-        layer: L.tileLayer(
-          `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${gibsDate}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
-          {
-            attribution: `Imagery © NASA EOSDIS GIBS · VIIRS/SNPP true colour (${gibsDate})`,
-            maxZoom: 19, maxNativeZoom: 9, bounds: [[-85.06, -180], [85.06, 180]],
-          },
-        ),
-      },
+      oscuro: { label: "Oscuro", layer: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", { attribution: "© OpenStreetMap · © CARTO", subdomains: "abcd", maxZoom: 19 }) },
+      satelite: { label: "Satélite", layer: gibsWmts("VIIRS_SNPP_CorrectedReflectance_TrueColor", "GoogleMapsCompatible_Level9", "jpg") },
+      falso: { label: "Falso color", layer: gibsWmts("VIIRS_SNPP_CorrectedReflectance_BandsM11-I2-I1", "GoogleMapsCompatible_Level9", "jpg") },
     };
     let activeBase = BASES.oscuro.layer.addTo(map); // choropleth (overlayPane) stays above the basemap
 
+    const OVERLAYS = {
+      firesSNPP:  { label: "Focos VIIRS SNPP",  layer: gibsWms("VIIRS_SNPP_Thermal_Anomalies_375m_All") },
+      firesN20:   { label: "Focos VIIRS N20",   layer: gibsWms("VIIRS_NOAA20_Thermal_Anomalies_375m_All") },
+      firesMODIS: { label: "Focos MODIS",       layer: gibsWms("MODIS_Terra_Thermal_Anomalies_All") },
+      aod:        { label: "Aerosol / humo",    layer: gibsWms("MODIS_Combined_Value_Added_AOD") },
+    };
+
+    // Base selector (radio).
     const baseSeg = document.getElementById("base-seg");
     function selectBase(key, btn) {
       const next = BASES[key].layer;
@@ -241,6 +264,19 @@
       b.onclick = () => selectBase(key, b);
       if (i === 0) b.classList.add("active");
       baseSeg.appendChild(b);
+    });
+
+    // GIBS overlays (multi-select toggles; stack above the choropleth).
+    const ovSeg = document.getElementById("ov-seg");
+    Object.values(OVERLAYS).forEach((ov) => {
+      const b = document.createElement("button");
+      b.textContent = ov.label;
+      b.onclick = () => {
+        const on = map.hasLayer(ov.layer);
+        if (on) map.removeLayer(ov.layer); else ov.layer.addTo(map);
+        b.classList.toggle("active", !on);
+      };
+      ovSeg.appendChild(b);
     });
 
     // Legend renders from the active layer's rows.
