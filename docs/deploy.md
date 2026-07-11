@@ -49,6 +49,24 @@ npm run db:apply:remote      # apply to production
 
 Migrations are append-only and tracked by wrangler; already-applied files are skipped.
 
+## Rebuilding the Digital Twin (Phase 2)
+
+A one-off batch job — re-run only when the region or its data sources change. Takes
+~15–20 min (Open-Meteo elevation is rate-limited; the script paces itself).
+
+```bash
+npm run twin:build           # -> tmp/digital-twin.sql (~9.4k cells for Aragón)
+npm run twin:apply:remote    # apply to production D1 (idempotent, INSERT OR REPLACE)
+# npm run twin:apply:local   # same against the local dev DB
+```
+
+Verify:
+
+```bash
+curl -s https://geospatial-platform.diegoromero.es/digital-twin        # coverage stats
+curl -s "https://geospatial-platform.diegoromero.es/digital-twin?cell=<h3>"  # one cell
+```
+
 ## Updating a secret
 
 ```bash

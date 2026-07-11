@@ -6,7 +6,7 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { currentFireWeather, insertObservations, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
+import { currentFireWeather, digitalTwinCell, digitalTwinStats, insertObservations, recentObservations, upsertFireWeather, writeAudit } from "./db.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { fetchFireWeather } from "./ingest/weather.js";
 import type { Env } from "./types.js";
@@ -34,7 +34,8 @@ async function runWeather(env: Env): Promise<void> {
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8" },
+    // Dynamic API: never let the edge cache these responses.
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
 }
 
@@ -45,7 +46,8 @@ export default {
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
-    const { pathname } = new URL(req.url);
+    const url = new URL(req.url);
+    const { pathname } = url;
     switch (pathname) {
       case "/":
       case "/health":
@@ -54,6 +56,11 @@ export default {
         return json(await recentObservations(env));
       case "/fire-weather":
         return json(await currentFireWeather(env));
+      case "/digital-twin": {
+        // ?cell=<h3> returns one cell's context; otherwise coverage stats.
+        const cell = url.searchParams.get("cell");
+        return json(cell ? await digitalTwinCell(env, cell) : await digitalTwinStats(env));
+      }
       // Manual trigger for local testing (cron can't be invoked from the browser).
       case "/dev/ingest/firms":
         await runFirms(env);

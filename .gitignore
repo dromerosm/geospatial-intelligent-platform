@@ -5,6 +5,9 @@ node_modules/
 .wrangler/
 dist/
 
+# Generated build artifacts (Digital Twin SQL, etc.)
+tmp/
+
 # Secrets (never commit)
 .dev.vars
 .env

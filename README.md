@@ -40,11 +40,14 @@ src/
 docs/             Architecture notes
 ```
 
-## What runs today (Phase 1)
+## What runs today (Phases 1–2)
 
 - Every 15 min: FIRMS VIIRS hotspots for Aragón → normalised → D1 (`observation`), raw CSV → R2.
 - Hourly: Open-Meteo fire weather sampled over a grid → D1 (`fire_weather`), Triple-30 flagged.
-- Read API: `GET /health`, `/observations`, `/fire-weather`.
+- **Digital Twin**: ~9.4k H3 res-7 cells for Aragón with terrain (slope/aspect) and
+  infrastructure (distance-to-asset, nearby population). Built offline via
+  `npm run twin:build` (see [`docs/deploy.md`](docs/deploy.md)).
+- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`.
 - Every ingestion writes an `audit_log` row.
 
 ## One-time setup
@@ -82,10 +85,10 @@ npm run deploy         # deploy Worker; provisions the custom domain on first ru
 The custom domain requires the `diegoromero.es` zone on the same Cloudflare account.
 
 Full deploy, verification and rollback procedures: [`docs/deploy.md`](docs/deploy.md).
-Phase 1 is **live** at https://geospatial-platform.diegoromero.es.
+Phases 1–2 are **live** at https://geospatial-platform.diegoromero.es.
 
 ## Roadmap
 
-Phases 0–1 (bootstrap + ingest) are implemented. Next: **Phase 2** Digital Twin batch
-build, **Phase 3** deterministic engine, **Phase 4** LLM briefing via AI Gateway,
-**Phase 5** map + Telegram. See the [master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).
+Phases 0–2 (bootstrap + ingest + Digital Twin) are implemented. Next: **Phase 3**
+deterministic engine, **Phase 4** LLM briefing via AI Gateway, **Phase 5** map +
+Telegram. See the [master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).

@@ -66,3 +66,23 @@ export async function currentFireWeather(env: Env) {
   ).all();
   return results;
 }
+
+/** Digital Twin coverage summary (for verifying the Phase 2 batch build). */
+export async function digitalTwinStats(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT
+       COUNT(*)                                     AS cells,
+       COUNT(slope_deg)                             AS with_slope,
+       COUNT(dist_asset_m)                          AS with_infra,
+       ROUND(AVG(slope_deg), 2)                     AS avg_slope_deg,
+       MAX(slope_deg)                               AS max_slope_deg,
+       ROUND(AVG(population_nearby), 0)             AS avg_population_nearby
+     FROM digital_twin_cell`,
+  ).all();
+  return results[0] ?? { cells: 0 };
+}
+
+/** Context for a single cell — the join Phase 3 will do per detection. */
+export async function digitalTwinCell(env: Env, cell: string) {
+  return env.DB.prepare(`SELECT * FROM digital_twin_cell WHERE h3_cell = ?`).bind(cell).first();
+}
