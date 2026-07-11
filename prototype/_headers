@@ -11,9 +11,6 @@
 /data/*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
-/favicon.svg
-  Cache-Control: public, max-age=604800
-
 # Always revalidate the document so redeploys show up immediately.
 /index.html
   Cache-Control: public, max-age=0, must-revalidate

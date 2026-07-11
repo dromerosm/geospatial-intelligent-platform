@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#0f1115"/>
-  <!-- H3-style hexagon, warm density fill -->
-  <polygon points="16,4 27,10 27,22 16,28 5,22 5,10" fill="#fd8d3c"/>
-  <polygon points="16,9 22,12.5 22,19.5 16,23 10,19.5 10,12.5" fill="#800026"/>
-</svg>
