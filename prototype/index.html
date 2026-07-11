@@ -61,14 +61,14 @@
     #title .stats span { color: var(--muted); font-size: 11px; }
     #title .seg-label { margin-top: 13px; font-size: 11px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.04em; }
-    #seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-    #seg button {
+    #seg, #base-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+    #seg button, #base-seg button {
       font: inherit; font-size: 12px; color: var(--muted);
       background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
       border-radius: 6px; padding: 5px 9px; cursor: pointer;
     }
-    #seg button:hover { color: var(--text); border-color: var(--muted); }
-    #seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #seg button:hover, #base-seg button:hover { color: var(--text); border-color: var(--muted); }
+    #seg button.active, #base-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
     #info {
       top: 14px; right: 14px; min-width: 232px; font-size: 12px;
@@ -106,6 +106,8 @@
     </div>
     <div class="seg-label">Capa</div>
     <div id="seg"></div>
+    <div class="seg-label">Base</div>
+    <div id="base-seg"></div>
   </div>
 
   <div id="info" class="panel">
@@ -202,10 +204,44 @@
     const map = L.map("map", { preferCanvas: true, zoomControl: false }).setView([41.3, -0.9], 8);
     L.control.zoom({ position: "bottomright" }).addTo(map);
     window.addEventListener("resize", () => map.invalidateSize());
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
-      attribution: '© OpenStreetMap · © CARTO',
-      subdomains: "abcd", maxZoom: 19,
-    }).addTo(map);
+
+    // Basemaps: CARTO dark (default) + NASA GIBS VIIRS true-colour satellite.
+    // GIBS daily true-colour tops out at native zoom 9 (~250 m); Leaflet upscales
+    // beyond it. Use imagery from 2 days ago for reliable global availability.
+    const gibsDate = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+    const BASES = {
+      oscuro: {
+        label: "Oscuro",
+        layer: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
+          attribution: "© OpenStreetMap · © CARTO", subdomains: "abcd", maxZoom: 19,
+        }),
+      },
+      satelite: {
+        label: "Satélite",
+        layer: L.tileLayer(
+          `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${gibsDate}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`,
+          {
+            attribution: `Imagery © NASA EOSDIS GIBS · VIIRS/SNPP true colour (${gibsDate})`,
+            maxZoom: 19, maxNativeZoom: 9, bounds: [[-85.06, -180], [85.06, 180]],
+          },
+        ),
+      },
+    };
+    let activeBase = BASES.oscuro.layer.addTo(map); // choropleth (overlayPane) stays above the basemap
+
+    const baseSeg = document.getElementById("base-seg");
+    function selectBase(key, btn) {
+      const next = BASES[key].layer;
+      if (next !== activeBase) { map.removeLayer(activeBase); next.addTo(map); activeBase = next; }
+      [...baseSeg.children].forEach((b) => b.classList.toggle("active", b === btn));
+    }
+    Object.entries(BASES).forEach(([key, base], i) => {
+      const b = document.createElement("button");
+      b.textContent = base.label;
+      b.onclick = () => selectBase(key, b);
+      if (i === 0) b.classList.add("active");
+      baseSeg.appendChild(b);
+    });
 
     // Legend renders from the active layer's rows.
     const legendTitle = document.getElementById("legend-title");
