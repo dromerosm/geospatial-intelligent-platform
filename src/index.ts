@@ -58,6 +58,18 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const { pathname } = url;
+
+    // The interactive map is a separate Cloudflare Pages project. This hostname
+    // belongs to the Worker, so serve the map at /mapa by reverse-proxying to
+    // Pages (strip the /mapa prefix; relative asset URLs resolve under /mapa/).
+    if (pathname === "/mapa") {
+      return Response.redirect(`${url.origin}/mapa/`, 308); // so relative assets resolve
+    }
+    if (pathname.startsWith("/mapa/")) {
+      const target = `https://geospatial-platform-map.pages.dev${pathname.slice("/mapa".length)}${url.search}`;
+      return fetch(new Request(target, req));
+    }
+
     switch (pathname) {
       case "/":
         return html(LANDING);
