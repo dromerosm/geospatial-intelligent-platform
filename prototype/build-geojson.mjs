@@ -2,138 +2,103 @@
 //
 // Reads the INSERT rows from ../tmp/digital-twin.sql, converts each H3 res-7
 // cell to its boundary polygon (h3-js), and writes a GeoJSON FeatureCollection
-// carrying, per cell: population + population_density, the cell-centre lat/lng,
-// and the predominant municipality (authoritative, from INE census sections).
-// The static map (index.html) loads only this file — no D1 / Worker needed.
-//
-// Municipality is derived, not reverse-geocoded: each INE 2025 census section
-// carries NMUN/NPRO + geometry; we rasterise every section to H3 res-9 subcells
-// (municipio map), then label each res-7 cell by majority vote of its subcells.
-// The sections GeoJSON is cached under tmp/ so re-runs are fully offline.
+// carrying every Digital Twin field per cell: land cover + fuel class, slope,
+// population + density, distance-to-asset, historical-fire flag, and the
+// predominant municipality — all read straight from the SQL (the main generator,
+// scripts/build-digital-twin.mjs, already computed them). Fully offline: only
+// needs the SQL file and h3-js — no INE / D1 / Worker calls.
 //
 // Usage: node prototype/build-geojson.mjs
 
-import { cellToBoundary, cellToChildren, cellToLatLng, polygonToCells } from "h3-js";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { cellToBoundary, cellToLatLng } from "h3-js";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SQL_IN = join(HERE, "..", "tmp", "digital-twin.sql");
-const SECTIONS_CACHE = join(HERE, "..", "tmp", "ine_sections_aragon.geojson");
 const OUT = join(HERE, "data", "aragon-density.geojson");
 
-const RES = 7; // matches the H3 resolution of the Digital Twin cells
-const INTERP_RES = 9; // subcell resolution for the municipio raster
-const UA = "geospatial-platform/0.1 (https://github.com/dromerosm/geospatial-intelligent-platform)";
+// Columns emitted by scripts/build-digital-twin.mjs toSql(), in order:
+const COLUMNS = [
+  "h3", "land_cover", "fuel_type", "slope_deg", "aspect_deg",
+  "population", "density", "dist_asset_m", "hist_fire_flag", "municipio",
+];
 
-// INE OGC API Features — census-section geometry + attributes (2025 vintage).
-const INE_OGC =
-  "https://www.ine.es/geoserver/ogc/features/v1/collections/" +
-  "WMS_INE_SECCIONES_G01:Secciones_2025/items";
-
-// Match each VALUES tuple:
-//   ('<h3>',<land>,<fuel>,<slope>,<aspect>,<population>,<density>,<dist>,<hist>)
-// land_cover / fuel_type are NULL in v1; the numeric columns may be NULL too.
-const ROW = /\('([0-9a-f]+)',[^,]*,[^,]*,([^,]*),([^,]*),([^,]*),([^,]*),([^,]*),([^,]*)\)/g;
-
-const num = (s) => (s == null || s.trim() === "" || s.trim() === "NULL" ? null : Number(s));
-
-// --- INE census sections (geometry + NMUN/NPRO) -----------------------------
-async function loadSections() {
-  if (existsSync(SECTIONS_CACHE)) {
-    console.error(`  sections: cached (${SECTIONS_CACHE})`);
-    return JSON.parse(readFileSync(SECTIONS_CACHE, "utf8")).features;
+// Parse the SQL VALUES tuples. A hand tokenizer (not a regex) because string
+// fields such as land_cover contain commas and '' escapes — e.g.
+//   'Land principally occupied by agriculture, with significant areas...'
+function* parseTuples(sql) {
+  let i = 0;
+  while (i < sql.length) {
+    if (sql[i] !== "(") { i++; continue; }
+    i++; // skip '('
+    const fields = [];
+    let cur = "";
+    let quoted = false;
+    let inStr = false;
+    while (i < sql.length) {
+      const ch = sql[i];
+      if (inStr) {
+        if (ch === "'" && sql[i + 1] === "'") { cur += "'"; i += 2; continue; }
+        if (ch === "'") { inStr = false; i++; continue; }
+        cur += ch; i++; continue;
+      }
+      if (ch === "'") { inStr = true; quoted = true; i++; continue; }
+      if (ch === ",") { fields.push(quoted ? cur : cur.trim()); cur = ""; quoted = false; i++; continue; }
+      if (ch === ")") { fields.push(quoted ? cur : cur.trim()); i++; break; }
+      cur += ch; i++;
+    }
+    // Only cell rows: 10 fields whose first looks like an H3 index.
+    if (fields.length === COLUMNS.length && /^[0-9a-f]+$/.test(fields[0])) yield fields;
   }
-  const filter = encodeURIComponent("CCA='02' AND TIPO='SECCIONADO'"); // 02 = Aragón
-  const url = `${INE_OGC}?f=application/json&limit=3000&filter-lang=cql2-text&filter=${filter}`;
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!res.ok) throw new Error(`INE OGC ${res.status}`);
-  const fc = await res.json();
-  writeFileSync(SECTIONS_CACHE, JSON.stringify(fc));
-  console.error(`  sections: fetched ${fc.features.length} (cached to ${SECTIONS_CACHE})`);
-  return fc.features;
 }
 
-// Rasterise every section onto H3 res-9, keyed to its municipality label.
-// A later section overwriting an earlier one on a shared subcell is negligible
-// (sections tile the territory; overlaps are boundary-thin).
-function municipioBySubcell(sections) {
-  const sub = new Map(); // res-9 cell -> "Municipio (Provincia)"
-  for (const f of sections) {
-    const p = f.properties;
-    const label = p.NPRO && p.NPRO !== p.NMUN ? `${p.NMUN} (${p.NPRO})` : p.NMUN;
-    if (!label || !f.geometry) continue;
-    const polys = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [f.geometry.coordinates];
-    for (const poly of polys) for (const c of polygonToCells(poly, INTERP_RES, true)) sub.set(c, label);
-  }
-  return sub;
-}
+const val = (s) => (s == null || s === "" || s === "NULL" ? null : s);
+const num = (s) => (val(s) == null ? null : Number(s));
 
-// Majority-vote the municipality of a res-7 cell from its res-9 children.
-function municipioForCell(cell, sub) {
-  const tally = new Map();
-  for (const child of cellToChildren(cell, INTERP_RES)) {
-    const label = sub.get(child);
-    if (label) tally.set(label, (tally.get(label) ?? 0) + 1);
-  }
-  let best = null;
-  let bestN = 0;
-  for (const [label, n] of tally) if (n > bestN) { bestN = n; best = label; }
-  return best;
-}
-
-// --- main -------------------------------------------------------------------
-async function main() {
+function main() {
   const sql = readFileSync(SQL_IN, "utf8");
-
-  console.error("Loading INE census sections for municipality labels...");
-  const sections = await loadSections();
-  const sub = municipioBySubcell(sections);
-  console.error(`  res-9 municipio raster: ${sub.size.toLocaleString("es-ES")} subcells`);
-
   const features = [];
-  let densMin = Infinity;
-  let densMax = -Infinity;
-  let popTotal = 0;
-  let labelled = 0;
+  let densMin = Infinity, densMax = -Infinity, popTotal = 0, labelled = 0, fires = 0;
 
-  for (const m of sql.matchAll(ROW)) {
-    const [, cell, , , population, density] = m;
-    const pop = num(population);
-    const dens = num(density);
-    const [lat, lng] = cellToLatLng(cell);
-    const municipio = municipioForCell(cell, sub);
-    if (municipio) labelled++;
-    // [lng,lat] rings, closed loop — h3-js GeoJSON mode.
-    const boundary = cellToBoundary(cell, true);
+  for (const f of parseTuples(sql)) {
+    const [h3, landCover, fuelType, slope, aspect, population, density, dist, hist, municipio] = f;
+    const pop = num(population) ?? 0;
+    const dens = num(density) ?? 0;
+    const [lat, lng] = cellToLatLng(h3);
+    if (val(municipio)) labelled++;
+    if (num(hist)) fires++;
     features.push({
       type: "Feature",
       properties: {
-        h3: cell,
-        population: pop ?? 0,
-        density: dens ?? 0,
+        h3,
+        land_cover: val(landCover),
+        fuel_type: val(fuelType),
+        slope_deg: num(slope),
+        population: pop,
+        density: dens,
+        dist_asset_m: num(dist),
+        hist_fire: num(hist) ? 1 : 0,
+        municipio: val(municipio),
         lat: Math.round(lat * 1e5) / 1e5,
         lng: Math.round(lng * 1e5) / 1e5,
-        municipio: municipio ?? null,
       },
-      geometry: { type: "Polygon", coordinates: [boundary] },
+      geometry: { type: "Polygon", coordinates: [cellToBoundary(h3, true)] }, // [lng,lat] closed ring
     });
-    if (dens != null) {
-      densMin = Math.min(densMin, dens);
-      densMax = Math.max(densMax, dens);
-    }
-    popTotal += pop ?? 0;
+    densMin = Math.min(densMin, dens);
+    densMax = Math.max(densMax, dens);
+    popTotal += pop;
   }
 
   if (features.length === 0) {
-    throw new Error(`No cells parsed from ${SQL_IN} — is the Digital Twin built?`);
+    throw new Error(`No cells parsed from ${SQL_IN} — is the Digital Twin built (npm run twin:build)?`);
   }
 
-  const fc = {
+  writeFileSync(OUT, JSON.stringify({
     type: "FeatureCollection",
     metadata: {
-      source: "INE Censo Anual 2025 (population + municipality) interpolated to H3 res-7",
+      source: "Aragón Digital Twin (INE 2025 population, CORINE land cover, EFFIS fire history) at H3 res-7",
       cells: features.length,
       populationTotal: popTotal,
       densityMin: densMin,
@@ -141,19 +106,16 @@ async function main() {
       generatedFrom: "tmp/digital-twin.sql",
     },
     features,
-  };
+  }));
 
-  writeFileSync(OUT, JSON.stringify(fc));
   console.error(
     `Wrote ${OUT}\n` +
       `  cells: ${features.length}\n` +
       `  with municipality: ${labelled} (${Math.round((labelled / features.length) * 100)}%)\n` +
+      `  hist-fire cells: ${fires}\n` +
       `  population (sum of cells): ${popTotal.toLocaleString("es-ES")}\n` +
       `  density people/km²: min ${densMin}, max ${densMax}`,
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main();

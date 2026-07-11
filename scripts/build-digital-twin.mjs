@@ -4,10 +4,12 @@
 //   - terrain: elevation -> steepest-descent slope + aspect  (Open-Elevation, real)
 //   - population + population_density: INE Censo Anual 2025 by census section,
 //     areally interpolated to H3 via res-9 subcells (authoritative, ref 1-Jan-2025)
+//   - municipio: predominant municipality per cell (INE section NMUN/NPRO,
+//     majority of res-9 subcells) — labelling/context only, not a scoring input
+//   - land_cover + fuel_type: CORINE Land Cover 2018 (EEA Identify) -> fuel class
+//   - hist_fire_flag: EFFIS burnt-area perimeters intersecting the cell
 //   - dist_asset_m: distance to nearest OSM asset (fire station, substation,
 //     settlement) via Overpass (best-effort)
-//
-// land_cover / fuel_type / hist_fire_flag are left NULL in v1 (see docs/architecture.md).
 //
 // Output: SQL (INSERT OR REPLACE) written to --out (default tmp/digital-twin.sql).
 // Apply with:  wrangler d1 execute geospatial-db --remote --file tmp/digital-twin.sql
@@ -251,6 +253,38 @@ function populationByCell(sections, popMap) {
   return pop7;
 }
 
+// "Municipio (Provincia)"; drop the parenthetical for the homonymous capital.
+function municipioLabel(p) {
+  return p.NPRO && p.NPRO !== p.NMUN ? `${p.NMUN} (${p.NPRO})` : p.NMUN;
+}
+
+// Predominant municipality per H3 res-7 cell: rasterise each section to res-9
+// subcells (as populationByCell does) and let the majority municipio win. Uses
+// the section attributes (NMUN/NPRO) already present in the fetched geometry —
+// no extra request. Cells outside every section stay unlabelled (null).
+function municipioByCell(sections) {
+  const votes = new Map(); // res-7 cell -> Map(label -> subcell count)
+  for (const f of sections) {
+    const label = municipioLabel(f.properties);
+    if (!label || !f.geometry) continue;
+    const polys = f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [f.geometry.coordinates];
+    for (const poly of polys)
+      for (const child of polygonToCells(poly, INTERP_RES, true)) {
+        const parent = cellToParent(child, RES);
+        let v = votes.get(parent);
+        if (!v) { v = new Map(); votes.set(parent, v); }
+        v.set(label, (v.get(label) ?? 0) + 1);
+      }
+  }
+  const muni = new Map();
+  for (const [cell, v] of votes) {
+    let best = null, bestN = 0;
+    for (const [l, n] of v) if (n > bestN) { bestN = n; best = l; }
+    muni.set(cell, best);
+  }
+  return muni;
+}
+
 // --- 3b. Land cover + fuel (CORINE CLC2018, per-cell Identify) --------------
 async function mapPool(items, concurrency, fn) {
   let idx = 0;
@@ -390,12 +424,12 @@ function toSql(rows) {
       .map(
         (r) =>
           `('${r.cell}',${str(r.landCover)},${str(r.fuelType)},${num(r.slopeDeg)},${num(r.aspectDeg)},` +
-          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},${r.histFire})`,
+          `${num(r.population)},${num(r.density)},${num(r.distAssetM)},${r.histFire},${str(r.municipio)})`,
       )
       .join(",");
     lines.push(
       "INSERT OR REPLACE INTO digital_twin_cell " +
-        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag) " +
+        "(h3_cell,land_cover,fuel_type,slope_deg,aspect_deg,population,population_density,dist_asset_m,hist_fire_flag,municipio) " +
         `VALUES ${values};`,
     );
   }
@@ -417,6 +451,7 @@ async function main() {
   console.error(`  sections (geometry): ${sections.length}`);
   const popMap = await fetchSectionPopulation();
   const pop7 = populationByCell(sections, popMap);
+  const muni7 = municipioByCell(sections);
 
   console.error("Fetching CORINE land cover (per cell)...");
   const landCover = await fetchLandCover(cells);
@@ -452,6 +487,7 @@ async function main() {
       density,
       distAssetM: nearestAsset(cell, assets),
       histFire: burnt.has(cell) ? 1 : 0,
+      municipio: muni7.get(cell) ?? null,
     };
   });
 
@@ -463,6 +499,7 @@ async function main() {
     `\nDone. ${rows.length} cells -> ${OUT}\n` +
       `  slope populated:      ${rows.filter((r) => r.slopeDeg != null).length}\n` +
       `  land cover populated: ${rows.filter((r) => r.landCover != null).length}\n` +
+      `  municipio populated:  ${rows.filter((r) => r.municipio != null).length}\n` +
       `  population in cells:   ${totalPop}\n` +
       `  hist-fire cells:      ${rows.filter((r) => r.histFire).length}\n` +
       `  infra (dist) populated: ${rows.filter((r) => r.distAssetM != null).length}`,
