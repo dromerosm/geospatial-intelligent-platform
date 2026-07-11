@@ -3,6 +3,39 @@
 Companion to the [master document](../specs/Geospatial_Intelligence_Platform_Master_Document.md).
 This file records **implementation decisions** — why the code looks the way it does.
 
+## Information & update flows
+
+```mermaid
+flowchart TB
+  subgraph DYN["Dynamic sources · Cron"]
+    direction LR
+    FIRMS["NASA FIRMS<br/>hotspots · every 15 min"]
+    METEO["Open-Meteo<br/>fire-weather · every 1 h"]
+  end
+  subgraph SRC["Digital Twin sources · batch, on demand"]
+    direction LR
+    INE["INE 2025"]
+    CLC["CORINE"]
+    EFFIS["EFFIS"]
+    OSM["OSM · Elevation"]
+  end
+  DYN --> WK["Worker<br/>normalise"]
+  WK --> D1[("D1")]
+  WK --> R2[("R2 · raw")]
+  SRC --> BLD["Build Digital Twin · H3"]
+  BLD --> D1
+  D1 --> DET["Deterministic engine<br/>explainable scoring"]
+  DET -->|"≥ threshold"| AIG["AI reasoning<br/>AI Gateway"]
+  DET -->|"< threshold"| AUD["Audit log"]
+  AIG --> BR["Operational briefing"]
+  BR --> OPS["Map · API · Telegram"]
+```
+
+Dynamic feeds refresh on Cron (FIRMS 15 min, weather hourly); the Digital Twin is a
+batch rebuild run on demand. The deterministic engine is the only component that creates
+events; the LLM runs only above threshold. The same diagram is embedded on the landing
+page as a pre-rendered inline SVG (zero JS, so Lighthouse stays at 100).
+
 ## 1. Everything on Cloudflare
 
 A single Worker hosts both the scheduled ingestion (`scheduled()`) and the read API
