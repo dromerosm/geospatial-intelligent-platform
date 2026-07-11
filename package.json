@@ -12,7 +12,9 @@
     "db:apply:remote": "wrangler d1 migrations apply geospatial-db --remote",
     "twin:build": "node scripts/build-digital-twin.mjs",
     "twin:apply:local": "wrangler d1 execute geospatial-db --local --file tmp/digital-twin.sql",
-    "twin:apply:remote": "wrangler d1 execute geospatial-db --remote --file tmp/digital-twin.sql"
+    "twin:apply:remote": "wrangler d1 execute geospatial-db --remote --file tmp/digital-twin.sql",
+    "map:build": "node prototype/build-geojson.mjs",
+    "map:deploy": "wrangler pages deploy prototype --project-name geospatial-platform-map --branch main --commit-dirty=true"
   },
   "dependencies": {
     "h3-js": "^4.1.0"

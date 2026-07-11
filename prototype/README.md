@@ -39,7 +39,27 @@ python3 -m http.server 8000 --directory prototype
   activo, histórico de fuego, municipio, lat/lon) + metadatos.
 - `index.html` — mapa Leaflet (canvas), selector de capa, leyenda dinámica, panel de
   detalle al pasar el ratón y basemap oscuro de CARTO.
-- `data/aragon-density.geojson` — generado; no se versiona (ver `.gitignore`).
+- `data/aragon-density.geojson` — dataset generado y **versionado** (es el asset que
+  sirve Pages). Se regenera con `npm run map:build`.
+- `_headers`, `robots.txt`, `sitemap.xml`, `favicon.svg`, `.assetsignore` — plomería de
+  Cloudflare Pages (caché, seguridad, SEO; el build script y este README no se sirven).
+
+## Despliegue (Cloudflare Pages)
+
+Sitio estático desplegado como proyecto Pages **`geospatial-platform-map`**
+(`https://geospatial-platform-map.pages.dev`). Los datos son un **snapshot estático**
+del Digital Twin (D1 → `tmp/digital-twin.sql` → GeoJSON), servido desde el CDN con
+Brotli (~0,8 MB) y caché de edge — **no** se consulta D1 en tiempo real.
+
+```bash
+# Refrescar el dato tras reconstruir el Digital Twin, y redesplegar:
+npm run twin:build     # (si cambió el twin) D1/INE/CORINE/EFFIS -> tmp/digital-twin.sql
+npm run map:build      # tmp/digital-twin.sql -> prototype/data/aragon-density.geojson
+npm run map:deploy     # wrangler pages deploy prototype -> Cloudflare Pages
+```
+
+El subdominio final (p. ej. una ruta bajo `geospatial-platform.diegoromero.es`) se
+enlaza/enruta desde la landing del proyecto; `canonical`/OG ya apuntan a `/mapa/`.
 
 ## Notas
 
