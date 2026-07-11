@@ -160,3 +160,8 @@ Design choices:
   A denser grid (>500 coords) would need chunked bulk calls (GET URL caps at ~8 KB / 414).
 - Fuel class from CLC is a coarse mapping; a fire-behaviour fuel model (e.g. Scott &
   Burgan / Prometheus) could refine it later.
+- **AEMET bias correction** — the weather grid can be corrected with AEMET station
+  observations via a background + residual approach (correct Open-Meteo's local bias,
+  don't interpolate the sparse stations). Design + roadmap:
+  [`docs/meteo-bias-correction.md`](meteo-bias-correction.md). Blocked on ingesting
+  AEMET conventional observations (only lightning is ingested today).
