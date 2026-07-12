@@ -241,20 +241,23 @@
     window.addEventListener("resize", () => map.invalidateSize());
 
     // --- Basemaps + NASA GIBS satellite layers --------------------------------
-    // Shared date = yesterday: the latest fully-processed day for VIIRS reflectance
-    // (today lags a few hours), per GIBS WMTS capabilities. The fire/aerosol layers
-    // also have that day, so one date keeps a coherent snapshot.
-    const GIBS_DATE = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    // GIBS daily true-colour lags a few hours, so "yesterday" is often not
+    // processed yet (tiles 404). Start on a safe 2-days-back date (reliably
+    // available) and let the async probe below upgrade to yesterday if ready.
     const GIBS_WMTS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
     const GIBS_WMS = "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi";
-    const gibsAttr = `Imagery © NASA EOSDIS GIBS (${GIBS_DATE})`;
+    const gibsAttr = "Imagery © NASA EOSDIS GIBS";
+    let GIBS_DATE = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+    const gibsWmtsUrl = (id, matrix, ext, date) => `${GIBS_WMTS}/${id}/default/${date}/${matrix}/{z}/{y}/{x}.${ext}`;
 
     // Raster reflectance basemaps (WMTS). Native zoom from the tile-matrix Level.
     function gibsWmts(id, matrix, ext) {
-      return L.tileLayer(`${GIBS_WMTS}/${id}/default/${GIBS_DATE}/${matrix}/{z}/{y}/{x}.${ext}`, {
+      const layer = L.tileLayer(gibsWmtsUrl(id, matrix, ext, GIBS_DATE), {
         maxZoom: 19, maxNativeZoom: Number(matrix.match(/Level(\d+)/)[1]),
         bounds: [[-85.06, -180], [85.06, 180]], attribution: gibsAttr,
       });
+      layer._gibs = { id, matrix, ext }; // so the date probe can refresh its URL
+      return layer;
     }
 
     // Overlays (fires, aerosol) are vector-tile-only in WMTS, so pull them as
@@ -285,6 +288,20 @@
       firesN20:   { label: "Focos VIIRS N20",   layer: gibsWms("VIIRS_NOAA20_Thermal_Anomalies_375m_All") },
       firesMODIS: { label: "Focos MODIS",       layer: gibsWms("MODIS_Terra_Thermal_Anomalies_All") },
     };
+
+    // Upgrade the GIBS date to yesterday if its tiles are already processed
+    // (fresher than the safe 2-day default); applied in place to every GIBS layer.
+    (async () => {
+      const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+      if (y === GIBS_DATE) return;
+      const probe = gibsWmtsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", "GoogleMapsCompatible_Level9", "jpg", y)
+        .replace("{z}/{y}/{x}", "2/1/1");
+      const ready = await fetch(probe).then((r) => r.ok).catch(() => false);
+      if (!ready) return;
+      GIBS_DATE = y;
+      [BASES.satelite.layer, BASES.falso.layer].forEach((l) => l.setUrl(gibsWmtsUrl(l._gibs.id, l._gibs.matrix, l._gibs.ext, y)));
+      Object.values(OVERLAYS).forEach((o) => o.layer.setParams({ time: y }));
+    })();
 
     // Base selector (radio).
     const baseSeg = document.getElementById("base-seg");
