@@ -21,6 +21,17 @@
   <meta name="twitter:title" content="Geospatial Intelligence Platform — Aragón">
   <meta name="twitter:description" content="Alerta temprana de incendios forestales para Aragón, construida sobre Cloudflare.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 29 9.5v13L16 30 3 22.5v-13z' fill='%230070f3'/%3E%3C/svg%3E">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "Geospatial Intelligence Platform",
+    "url": "https://geospatial-platform.diegoromero.es/",
+    "description": "Plataforma de inteligencia geoespacial para alerta temprana de incendios forestales en Aragón, construida sobre Cloudflare.",
+    "inLanguage": "es-ES",
+    "author": { "@type": "Person", "name": "Diego Romero", "url": "https://diegoromero.es" }
+  }
+  </script>
   <style>
     :root {
       --bg: #ffffff; --text: #000000; --muted: #555555; --faint: #6b6b6b;
@@ -46,6 +57,9 @@
     .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 1.25rem; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+    /* Inline links in running text must be distinguishable without colour (WCAG):
+       underline them, but keep structural links (nav, cards, endpoints) clean. */
+    main p a, main li a, footer a { text-decoration: underline; }
 
     header {
       border-bottom: 1px solid var(--border);

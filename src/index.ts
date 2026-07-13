@@ -222,6 +222,17 @@ function text(body: string): Response {
 
 const ROBOTS_TXT = `User-agent: *
 Allow: /
+Sitemap: https://geospatial-platform.diegoromero.es/sitemap.xml
+`;
+
+// Minimal sitemap for the Worker-served surfaces (the map is a separate Pages
+// project with its own sitemap under /mapa/).
+const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://geospatial-platform.diegoromero.es/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://geospatial-platform.diegoromero.es/mapa/</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://geospatial-platform.diegoromero.es/docs</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
+</urlset>
 `;
 
 // llms.txt — machine-readable site summary for AI agents (llmstxt.org).
@@ -304,6 +315,10 @@ export default {
         return json(openApiSpec());
       case "/robots.txt":
         return text(ROBOTS_TXT);
+      case "/sitemap.xml":
+        return new Response(SITEMAP_XML, {
+          headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=86400" },
+        });
       case "/llms.txt":
         return text(LLMS_TXT);
       case "/health":
