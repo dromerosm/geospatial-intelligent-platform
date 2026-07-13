@@ -541,6 +541,7 @@
         const eventsNote = document.getElementById("events-note");
         const PRIO = { critical: "#e5484d", high: "#ff8c00", medium: "#e2b53d", low: "#6b7280" };
         let eventsLayer = null;
+        const eventMarkers = {}; // h3 cell -> marker, for the ?event= deep-link
         async function loadEvents() {
           if (eventsLayer) return eventsLayer;
           let h3; try { h3 = await ensureH3(); } catch { eventsNote.textContent = "Eventos: no se pudo cargar h3-js"; return null; }
@@ -569,9 +570,10 @@
                 `<div style="font-weight:600;text-transform:uppercase;color:${PRIO[prio] || PRIO.medium}">${esc(prio)}</div>` +
                 `<div style="color:#888;font-size:11px;margin:2px 0 6px">${esc(e.h3_cell)} · score ${e.det_score} · conf ${e.det_confidence}</div>` +
                 body + `</div>`;
-              L.circleMarker(ll, { radius: 9, color: "#fff", weight: 1.5, fillColor: PRIO[prio] || PRIO.medium, fillOpacity: 0.9 })
-                .bindPopup(popup, { maxWidth: 300, minWidth: 220, maxHeight: 240 })
-                .addTo(eventsLayer);
+              const marker = L.circleMarker(ll, { radius: 9, color: "#fff", weight: 1.5, fillColor: PRIO[prio] || PRIO.medium, fillOpacity: 0.9 })
+                .bindPopup(popup, { maxWidth: 300, minWidth: 220, maxHeight: 240 });
+              marker.addTo(eventsLayer);
+              eventMarkers[e.h3_cell] = marker;
               n++;
             }
             eventsNote.textContent = n ? `Eventos: ${n} activo(s) · pulsa un punto para el briefing` : "Eventos: ninguno activo ahora";
@@ -588,6 +590,7 @@
           meteo: { label: "Meteo (viento)", get: loadMeteo },
         };
         const projSeg = document.getElementById("proj-seg");
+        const projBtn = {};
         Object.entries(PROJ).forEach(([key, ov]) => {
           const b = document.createElement("button");
           b.textContent = ov.label;
@@ -600,6 +603,7 @@
             // Enabling wind also colours the cells by temperature (same weather load).
             if (key === "meteo" && !on) selectLayer("temp", capaBtn.temp);
           };
+          projBtn[key] = b;
           projSeg.appendChild(b);
         });
 
@@ -614,6 +618,20 @@
         if (sized()) doFit();
         const ro = new ResizeObserver(() => { if (sized()) { doFit(); ro.disconnect(); } });
         ro.observe(el);
+
+        // Deep-link: /mapa/?event=<h3> (from a Telegram alert) turns on the Eventos
+        // layer, centres on that event and opens its briefing popup.
+        const focusCell = new URLSearchParams(location.search).get("event");
+        if (focusCell) {
+          loadEvents().then((layer) => {
+            if (!layer) return;
+            if (!map.hasLayer(layer)) layer.addTo(map);
+            if (projBtn.eventos) projBtn.eventos.classList.add("active");
+            const mk = eventMarkers[focusCell];
+            if (mk) { map.setView(mk.getLatLng(), 10); mk.openPopup(); }
+            else eventsNote.textContent = "Eventos: el evento del enlace ya no está activo";
+          });
+        }
       })
       .catch((err) => {
         document.getElementById("title").insertAdjacentHTML(

@@ -16,6 +16,7 @@ import { assertFrame, decodeRayosGif, extractStrikes, fetchAemetRayosGif } from 
 import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
 import { cellFor } from "./lib/h3.js";
+import { buildMessage, sendTelegram } from "./notify/telegram.js";
 import type { Env, Observation } from "./types.js";
 import LANDING from "./landing.html";
 
@@ -399,6 +400,27 @@ export default {
           persisted,
           sample: strikes.slice(0, 20),
         });
+      }
+      // Send a sample alert to the configured Telegram chat to verify wiring
+      // (bot token + chat id + message format + map deep-link). No event needed.
+      case "/dev/notify/test": {
+        if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+          return json({ error: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not set" }, 400);
+        }
+        const text = buildMessage({
+          cell: "8739738d3ffffff", municipio: "Prueba (Teruel)", score: 0.66, confidence: 0.7,
+          briefing: {
+            priority: "high",
+            briefing_text: "Mensaje de prueba de la Fase 5: verificación del canal de alertas operativas. No corresponde a un evento real.",
+            source_precision_statement: "Fuente: prueba, resolución nominal 375 m, incertidumbre 375 m, confianza 90%.",
+          },
+        });
+        try {
+          await sendTelegram(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_CHAT_ID, text);
+          return json({ sent: true, chat: env.TELEGRAM_CHAT_ID });
+        } catch (err) {
+          return json({ sent: false, error: String(err) }, 502);
+        }
       }
       case "/dev/lightning/test": {
         // Inject one test strike (mechanism demo until a real feed is wired).

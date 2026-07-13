@@ -16,6 +16,10 @@ export interface Env {
   // and simply leaves briefings null.
   OPENAI_API_KEY?: string;
   GROQ_API_KEY?: string;
+  // Phase 5: Telegram operational alerts. Optional — when either is unset the
+  // engine still runs and simply skips notifications.
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
 }
 
 /**

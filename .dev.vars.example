@@ -13,6 +13,7 @@ AEMET_API_KEY=""
 GROQ_API_KEY=""     # active provider (Groq gpt-oss-120b)
 OPENAI_API_KEY=""   # fallback (only if AI_PROVIDER="openai")
 
-# --- Reserved for later phases ---
-# Telegram bot token for operational alerts (Phase 5)
+# Telegram operational alerts (Phase 5). Optional: if either is unset, alerts are
+# skipped. Get the chat id from getUpdates (see docs/telegram-alerts.md).
 TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""

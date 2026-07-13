@@ -190,11 +190,16 @@ export async function observationsSince(env: Env, sinceIso: string) {
 }
 
 export async function activeEventByCell(env: Env, cell: string) {
-  // has_briefing lets the engine call the LLM only once per event lifetime.
+  // has_briefing gates the LLM to once per event; briefing_json + notified_at let
+  // the engine notify (once) from a briefing generated on an earlier pass.
   return env.DB.prepare(
-    `SELECT id, (briefing_json IS NOT NULL) AS has_briefing
+    `SELECT id, (briefing_json IS NOT NULL) AS has_briefing, briefing_json, notified_at
        FROM event WHERE h3_cell = ? AND status = 'active' LIMIT 1`,
-  ).bind(cell).first<{ id: string; has_briefing: number }>();
+  ).bind(cell).first<{ id: string; has_briefing: number; briefing_json: string | null; notified_at: string | null }>();
+}
+
+export async function markNotified(env: Env, id: string, at: string): Promise<void> {
+  await env.DB.prepare(`UPDATE event SET notified_at = ? WHERE id = ?`).bind(at, id).run();
 }
 
 export async function updateEventBriefing(

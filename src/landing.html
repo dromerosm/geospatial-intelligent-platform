@@ -179,7 +179,7 @@
         con un motor de decisión explicable.
       </p>
       <div class="pills">
-        <span class="pill"><span class="dot" style="background:var(--ok)"></span>Fases 0–4 completadas</span>
+        <span class="pill"><span class="dot" style="background:var(--ok)"></span>Fases 0–5 completadas</span>
         <span class="pill">Serverless en Cloudflare</span>
         <span class="pill">Región: Aragón (~9.400 celdas H3)</span>
         <span class="pill">Datos públicos autoritativos</span>
@@ -197,7 +197,7 @@
         <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 2 · Gemelo digital territorial</span><br><span class="ph-desc">~9.400 celdas H3 (res-7) de Aragón con terreno, cobertura del suelo→combustible, histórico de incendios, distancia a activos, población + densidad + franjas de edad y municipio.</span></span><span></span></li>
         <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 3 · Motor de decisión determinista</span><br><span class="ph-desc">Enriquece cada foco (gemelo, FWI del punto más cercano, vigilancia de rayos) y lo puntúa de forma explicable: contribuciones nombradas + umbral de confianza (pesos ajustables en KV, sin redeploy). Corrobora además con alertas oficiales (GDACS, avisos AEMET). Fuente autoritativa de eventos.</span></span><span></span></li>
         <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 4 · Razonamiento con IA</span><br><span class="ph-desc">Un único agente LLM (Groq <code>gpt-oss-120b</code>, salida estructurada) genera, sólo para eventos sobre umbral, un briefing operativo en español + JSON estructurado (prioridad, evidencia en conflicto, acciones y enunciado de precisión de la fuente). Razona sobre el score determinista; explica, nunca detecta ni decide. Una llamada por evento; el motor determinista sigue siendo la autoridad.</span></span><span></span></li>
-        <li><span class="ph-status st-wait">○ Planificada</span><span><span class="ph-name">Fase 5 · Operación</span><br><span class="ph-desc">Mapa interactivo (MapLibre), API REST y alertas por Telegram, respetando siempre la resolución y la incertidumbre de la fuente.</span></span><span></span></li>
+        <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 5 · Operación</span><br><span class="ph-desc">Canal de salida operativo: un bot de Telegram envía, sólo para eventos nuevos de prioridad alta/crítica, el briefing con enlace profundo al mapa (una alerta por evento, best-effort). Mapa interactivo y API REST de solo lectura ya operativos. Siempre respetando la resolución y la incertidumbre de la fuente.</span></span><span></span></li>
       </ul>
     </section>
 
@@ -228,7 +228,7 @@
         <div class="card"><h3>R2 · KV</h3><p>Payloads crudos para replay/auditoría; configuración y umbrales.</p><a class="src" href="https://developers.cloudflare.com/r2/" target="_blank" rel="noopener">R2 ↗</a><a class="src" href="https://developers.cloudflare.com/kv/" target="_blank" rel="noopener">KV ↗</a></div>
         <div class="card"><h3>Indexado H3</h3><p>Celdas de ~5 km² como clave espacial; joins por igualdad, sin SQL espacial.</p><a class="src" href="https://h3geo.org/" target="_blank" rel="noopener">h3geo.org ↗</a></div>
         <div class="card"><h3>Razonamiento IA <span class="tag">Fase 4</span></h3><p>Groq <code>gpt-oss-120b</code>, llamada directa desde el Worker con salida estructurada (~1,5 s). Única dependencia externa y proveedor intercambiable (endpoint compatible con OpenAI); sólo se invoca en eventos sobre umbral, así que el coste queda acotado.</p><a class="src" href="https://console.groq.com/docs/structured-outputs" target="_blank" rel="noopener">Structured Outputs · docs ↗</a></div>
-        <div class="card"><h3>Durable Objects <span class="tag">Fase 5</span></h3><p>Ventanas temporales con estado (p. ej. vigilancia de rayos) y coordinación de eventos.</p><a class="src" href="https://developers.cloudflare.com/durable-objects/" target="_blank" rel="noopener">Durable Objects · docs ↗</a></div>
+        <div class="card"><h3>Telegram <span class="tag">Fase 5</span></h3><p>Canal de salida operativo: el Worker envía el briefing de cada evento nuevo de prioridad alta/crítica a un chat de operaciones, con enlace profundo al mapa. Una alerta por evento, best-effort.</p><a class="src" href="https://core.telegram.org/bots/api" target="_blank" rel="noopener">Telegram Bot API ↗</a></div>
       </div>
       <p class="eyebrow" style="margin:1.5rem 0 .7rem">Flujos de información y actualización</p>
       <figure class="diagram">

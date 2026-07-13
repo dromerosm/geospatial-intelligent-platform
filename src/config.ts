@@ -87,3 +87,19 @@ export const AI_REASONING_EFFORT = AI_ENDPOINTS[AI_PROVIDER].effort;
 // headroom. If it aborts, the briefing stays null and the next engine pass retries
 // it (self-healing — the engine only briefs events with none).
 export const AI_TIMEOUT_MS = 30_000;
+
+// --- Telegram operational alerts (Phase 5) ----------------------------------
+// The bot pushes each new event whose AI briefing priority meets the threshold to
+// an operations chat. Best-effort + self-healing like the briefing; dedup via
+// event.notified_at. Bot token + chat id are secrets (see types.ts / .dev.vars).
+export const TELEGRAM_API = (token: string, method: string) =>
+  `https://api.telegram.org/bot${token}/${method}`;
+/** Priority ordering; a briefing is notified when its rank ≥ min_priority's rank. */
+export const PRIORITY_RANK: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+/** Default notify threshold; override live via KV `notify_config` {"min_priority":"..."}. */
+export const DEFAULT_MIN_PRIORITY = "high";
+/** Public origin used to build the map deep-link inside each alert. */
+export const PUBLIC_ORIGIN = "https://geospatial-platform.diegoromero.es";
+/** Cap notifications per engine pass (Telegram is generous; symmetry + burst guard). */
+export const MAX_NOTIFICATIONS_PER_RUN = 5;
+export const TELEGRAM_TIMEOUT_MS = 15_000;

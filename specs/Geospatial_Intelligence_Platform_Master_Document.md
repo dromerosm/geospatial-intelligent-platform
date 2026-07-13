@@ -324,7 +324,7 @@ Refine an event as evidence improves — MTG coarse footprint → VIIRS higher-r
 | **2. Digital Twin** ✅ | Batch job builds `digital_twin_cell` for the region (H3 res 7) | offline script → D1 |
 | **3. Decide** ✅ | Worker: cluster → enrich → explainable scoring + confidence gate + audit; weights/threshold in KV | Worker, D1, KV |
 | **4. Explain** ✅ | LLM briefing on ≥threshold events (single call, structured output) | Groq `gpt-oss-120b` (direct), Secrets |
-| **5. Operate** ⬅ next | MapLibre map (footprints) + REST API + Telegram alert | Pages, Worker, DO(optional) |
+| **5. Operate** ✅ | Interactive map + REST API + Telegram alert (high/critical, once per event) | Pages, Worker, Telegram Bot API |
 | **6. Fast-follow** | Lightning Watch (DO), MTG/Copernicus, Vectorize RAG, Teams/Email | DO, Workers AI, Vectorize |
 
 ## Cost model (order of magnitude, v1)
