@@ -86,10 +86,10 @@ npm run deploy         # deploy Worker; provisions the custom domain on first ru
 The custom domain requires the `diegoromero.es` zone on the same Cloudflare account.
 
 Full deploy, verification and rollback procedures: [`docs/deploy.md`](docs/deploy.md).
-Phases 1–2 are **live** at https://geospatial-platform.diegoromero.es.
+Phases 1–3 are **live** at https://geospatial-platform.diegoromero.es.
 
 ## Roadmap
 
-Phases 0–2 (bootstrap + ingest + Digital Twin) are implemented. Next: **Phase 3**
-deterministic engine, **Phase 4** LLM briefing via AI Gateway, **Phase 5** map +
-Telegram. See the [master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).
+Phases 0–3 (bootstrap + ingest + Digital Twin + deterministic engine) are implemented.
+Next: **Phase 4** LLM briefing via AI Gateway (only for events above threshold), **Phase 5**
+map + Telegram. See the [master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).

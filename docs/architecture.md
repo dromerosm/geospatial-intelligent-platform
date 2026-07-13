@@ -143,6 +143,35 @@ Design choices:
   ≥30 ha, 2000→present) intersecting Aragón; each perimeter is discretised to res-7 cells
   which are flagged. Best-effort: if EFFIS is unavailable the flag defaults to 0.
 
+## Deterministic decision engine (Phase 3)
+
+The **authoritative** source of events (`src/engine/`). It runs after each FIRMS
+pass over the recent detection window (24 h):
+
+1. **Cluster** detections by exact H3 cell (k-ring merge is a documented refinement).
+2. **Enrich** each cluster: Digital Twin cell (fuel/slope/population/exposure/municipio),
+   the **nearest fire-weather point** (213-grid → FWI/Triple-30), and any active
+   **lightning watch** on the cell.
+3. **Score** — `score.ts` is a pure, unit-tested function. Two outputs:
+   - **confidence** (is it a real active fire): persistence + source confidence + a
+     lightning-watch boost. **Gates event creation.**
+   - **score** (operational priority): a weighted sum of five NAMED, normalised
+     contributions — `persistence`, `source_confidence`, `fire_weather`,
+     `fuel_terrain`, `exposure`. Every raw/normalised/weighted value is echoed in
+     `score_breakdown_json`, so each decision is fully auditable.
+4. **Decide**: if `confidence ≥ threshold` → create/update an active `event` (one per
+   cell); else write an audit row (`stage='score'`, `below_threshold`). The LLM never
+   runs here — that's Phase 4, only for events above threshold.
+
+**Weights + threshold are tunable live** from KV `CONFIG` key `engine_config` (JSON,
+merged over the defaults in `score.ts`) — no redeploy. `GET /events` lists active
+events; `GET /dev/engine/config` shows the effective config; `/dev/engine/run` and
+`/dev/observe/test` drive it when there are no live hotspots.
+
+Design choices: scoring is pure and separate from I/O (testable); normalisation
+constants are deliberately simple and documented in `score.ts` (tune via KV); one
+active event per cell keeps the model simple and idempotent.
+
 ## Open items
 
 - **FWI System** (`src/lib/fwi.ts`) computes the Canadian fire-weather indices daily from

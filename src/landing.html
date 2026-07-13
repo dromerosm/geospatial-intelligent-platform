@@ -179,7 +179,7 @@
         con un motor de decisión explicable.
       </p>
       <div class="pills">
-        <span class="pill"><span class="dot" style="background:var(--ok)"></span>Fases 0–2 completadas</span>
+        <span class="pill"><span class="dot" style="background:var(--ok)"></span>Fases 0–3 completadas</span>
         <span class="pill">Serverless en Cloudflare</span>
         <span class="pill">Región: Aragón (~9.400 celdas H3)</span>
         <span class="pill">Datos públicos autoritativos</span>
@@ -195,8 +195,8 @@
       <ul class="phases">
         <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fases 0–1 · Ingesta dinámica</span><br><span class="ph-desc">Workers con Cron: focos NASA FIRMS (15 min), meteorología de incendio Open-Meteo (cada 3 h, con previsión a 3 días) y rayos AEMET (00/06/12/18Z), normalizados a D1; payloads crudos a R2; auditoría.</span></span><span></span></li>
         <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 2 · Gemelo digital territorial</span><br><span class="ph-desc">~9.400 celdas H3 (res-7) de Aragón con terreno, cobertura del suelo→combustible, histórico de incendios, distancia a activos, población + densidad + franjas de edad y municipio.</span></span><span></span></li>
-        <li><span class="ph-status st-next">◆ Próxima</span><span><span class="ph-name">Fase 3 · Motor de decisión determinista</span><br><span class="ph-desc">Correlación, persistencia, clustering H3 y scoring explicable con contribuciones nombradas y umbral de confianza. Fuente autoritativa de eventos.</span></span><span></span></li>
-        <li><span class="ph-status st-wait">○ Planificada</span><span><span class="ph-name">Fase 4 · Razonamiento con IA</span><br><span class="ph-desc">Un agente LLM (vía Cloudflare AI Gateway) genera un briefing operativo estructurado sólo para eventos sobre umbral. Explica; nunca detecta.</span></span><span></span></li>
+        <li><span class="ph-status st-ok">✔ Completada</span><span><span class="ph-name">Fase 3 · Motor de decisión determinista</span><br><span class="ph-desc">Enriquece cada foco (gemelo, FWI del punto más cercano, vigilancia de rayos) y lo puntúa de forma explicable: contribuciones nombradas + umbral de confianza (pesos ajustables en KV, sin redeploy). Fuente autoritativa de eventos.</span></span><span></span></li>
+        <li><span class="ph-status st-next">◆ Próxima</span><span><span class="ph-name">Fase 4 · Razonamiento con IA</span><br><span class="ph-desc">Un agente LLM (vía Cloudflare AI Gateway) genera un briefing operativo estructurado sólo para eventos sobre umbral. Explica; nunca detecta.</span></span><span></span></li>
         <li><span class="ph-status st-wait">○ Planificada</span><span><span class="ph-name">Fase 5 · Operación</span><br><span class="ph-desc">Mapa interactivo (MapLibre), API REST y alertas por Telegram, respetando siempre la resolución y la incertidumbre de la fuente.</span></span><span></span></li>
       </ul>
     </section>
@@ -244,6 +244,7 @@
         <a class="endpoint" href="/observations"><code>GET /observations</code><span>Últimas detecciones</span></a>
         <a class="endpoint" href="/fire-weather"><code>GET /fire-weather</code><span>Meteorología de incendio por celda</span></a>
         <a class="endpoint" href="/lightning"><code>GET /lightning</code><span>Vigilancias de rayos activas</span></a>
+        <a class="endpoint" href="/events"><code>GET /events</code><span>Eventos activos + desglose del score</span></a>
       </div>
     </section>
 

@@ -317,11 +317,11 @@ Refine an event as evidence improves — MTG coarse footprint → VIIRS higher-r
 
 | Phase | Deliverable | Cloudflare pieces |
 |------|-------------|-------------------|
-| **0. Bootstrap** | Repo, `wrangler.jsonc`, D1 schema, KV config, R2 bucket, Pages skeleton | Wrangler, D1, KV, R2, Pages |
-| **1. Ingest** | Cron Worker pulls FIRMS + Open-Meteo → normalise → Queue → D1/R2 | Cron, Queues, D1, R2 |
-| **2. Digital Twin** | Batch job builds `digital_twin_cell` for the region (H3 res 7) | offline script → D1 |
-| **3. Decide** | Consumer Worker: H3 join + deterministic scoring + audit | Worker, D1 |
-| **4. Explain** | Claude briefing via AI Gateway on ≥threshold events | AI Gateway, Secrets |
+| **0. Bootstrap** ✅ | Repo, `wrangler.jsonc`, D1 schema, KV config, R2 bucket, Pages skeleton | Wrangler, D1, KV, R2, Pages |
+| **1. Ingest** ✅ | Cron Worker pulls FIRMS + Open-Meteo (+ FWI, AEMET lightning) → D1/R2 | Cron, D1, R2 |
+| **2. Digital Twin** ✅ | Batch job builds `digital_twin_cell` for the region (H3 res 7) | offline script → D1 |
+| **3. Decide** ✅ | Worker: cluster → enrich → explainable scoring + confidence gate + audit; weights/threshold in KV | Worker, D1, KV |
+| **4. Explain** ⬅ next | LLM briefing via AI Gateway on ≥threshold events | AI Gateway, Secrets |
 | **5. Operate** | MapLibre map (footprints) + REST API + Telegram alert | Pages, Worker, DO(optional) |
 | **6. Fast-follow** | Lightning Watch (DO), MTG/Copernicus, Vectorize RAG, Teams/Email | DO, Workers AI, Vectorize |
 

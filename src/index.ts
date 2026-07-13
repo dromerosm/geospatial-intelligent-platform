@@ -183,7 +183,9 @@ const LLMS_TXT = `# Geospatial Intelligence Platform
 - [Health](https://geospatial-platform.diegoromero.es/health): service status
 - [Digital Twin](https://geospatial-platform.diegoromero.es/digital-twin): territorial digital-twin summary (append ?cell=<h3> for one cell)
 - [Observations](https://geospatial-platform.diegoromero.es/observations): latest satellite detections
-- [Fire weather](https://geospatial-platform.diegoromero.es/fire-weather): per-cell fire weather
+- [Fire weather](https://geospatial-platform.diegoromero.es/fire-weather): per-cell fire weather (current + FWI + 3-day forecast; append ?cell=<h3>)
+- [Lightning](https://geospatial-platform.diegoromero.es/lightning): active lightning watches
+- [Events](https://geospatial-platform.diegoromero.es/events): active fire events with the explainable score breakdown
 
 ## Pages
 - [Landing](https://geospatial-platform.diegoromero.es/): project status, data sources and architecture
