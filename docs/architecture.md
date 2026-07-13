@@ -77,7 +77,7 @@ at another region is a one-file edit (plus rebuilding the Digital Twin).
 
 | Feed | Source | Cadence | Auth | Notes |
 |------|--------|---------|------|-------|
-| Hotspots | NASA FIRMS VIIRS_SNPP_NRT (Area CSV API) | 15 min | free map key | 375 m nominal resolution |
+| Hotspots | NASA FIRMS — VIIRS SNPP + NOAA-20 + NOAA-21 + MODIS (Area CSV API) | 15 min | free map key | all constellations merged; deterministic ids dedup re-fetches |
 | Fire weather | Open-Meteo current + 3-day hourly forecast | every 3 h | none | 213-point surface-uniform grid clipped to Aragón (~15 km), one bulk call; Triple-30 + `forecast_json` per point |
 
 ## 7. Digital Twin build (Phase 2)
