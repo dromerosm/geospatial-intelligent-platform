@@ -105,6 +105,49 @@ export async function hasActiveLightningWatch(env: Env, cell: string, now: strin
   return row != null;
 }
 
+// --- Decision engine (Phase 3) ----------------------------------------------
+export async function observationsSince(env: Env, sinceIso: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, h3_cell, confidence, acquired_at FROM observation
+       WHERE acquired_at >= ? ORDER BY acquired_at DESC`,
+  ).bind(sinceIso).all<{ id: string; h3_cell: string; confidence: number | null; acquired_at: string }>();
+  return results;
+}
+
+export async function activeEventByCell(env: Env, cell: string) {
+  return env.DB.prepare(
+    `SELECT id FROM event WHERE h3_cell = ? AND status = 'active' LIMIT 1`,
+  ).bind(cell).first<{ id: string }>();
+}
+
+export async function insertEvent(
+  env: Env,
+  ev: { id: string; cell: string; score: number; confidence: number; breakdown: string; obsIds: string; at: string },
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO event (id, created_at, h3_cell, status, det_score, det_confidence, score_breakdown_json, observation_ids)
+     VALUES (?,?,?,'active',?,?,?,?)`,
+  ).bind(ev.id, ev.at, ev.cell, ev.score, ev.confidence, ev.breakdown, ev.obsIds).run();
+}
+
+export async function updateEvent(
+  env: Env,
+  id: string,
+  u: { score: number; confidence: number; breakdown: string; obsIds: string },
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE event SET det_score=?, det_confidence=?, score_breakdown_json=?, observation_ids=? WHERE id=?`,
+  ).bind(u.score, u.confidence, u.breakdown, u.obsIds, id).run();
+}
+
+export async function activeEvents(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, created_at, h3_cell, status, det_score, det_confidence, score_breakdown_json, observation_ids, briefing_text
+       FROM event WHERE status = 'active' ORDER BY det_score DESC`,
+  ).all();
+  return results;
+}
+
 export async function writeAudit(env: Env, stage: string, detail: unknown): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO audit_log (id, at, stage, event_id, detail_json) VALUES (?,?,?,?,?)`,

@@ -7,13 +7,14 @@
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
 import { ARAGON_BBOX, LIGHTNING_WATCH_HOURS } from "./config.js";
-import { activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
+import { activeEvents, activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
+import { runDecisionEngine } from "./engine/engine.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { assertFrame, decodeRayosGif, extractStrikes, fetchAemetRayosGif } from "./ingest/lightning-aemet.js";
 import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
 import { cellFor } from "./lib/h3.js";
-import type { Env } from "./types.js";
+import type { Env, Observation } from "./types.js";
 import LANDING from "./landing.html";
 
 async function runFirms(env: Env): Promise<void> {
@@ -24,7 +25,10 @@ async function runFirms(env: Env): Promise<void> {
   const obs = parseFirmsCsv(csv, now, rawKey);
   const written = await insertObservations(env, obs);
   await writeAudit(env, "ingest", { feed: "FIRMS_VIIRS", detections: obs.length, written, rawKey });
-  console.log(`FIRMS: ${obs.length} detections, ${written} stored`);
+  // Run the deterministic engine over the recent detection window (authoritative
+  // event creation). Cheap and idempotent, so run every FIRMS pass.
+  const eng = await runDecisionEngine(env);
+  console.log(`FIRMS: ${obs.length} detections, ${written} stored; engine ${JSON.stringify(eng)}`);
 }
 
 async function runWeather(env: Env): Promise<void> {
@@ -219,7 +223,7 @@ export default {
     if (
       pathname === "/health" || pathname === "/observations" ||
       pathname === "/fire-weather" || pathname === "/digital-twin" ||
-      pathname === "/lightning" || pathname.startsWith("/dev/")
+      pathname === "/lightning" || pathname === "/events" || pathname.startsWith("/dev/")
     ) {
       const ip = req.headers.get("CF-Connecting-IP") ?? "anon";
       const { success } = await env.API_RL.limit({ key: ip });
@@ -268,6 +272,25 @@ export default {
       }
       case "/lightning":
         return json(await activeLightningWatches(env, new Date().toISOString()));
+      case "/events":
+        return json(await activeEvents(env));
+      case "/dev/engine/run":
+        return json(await runDecisionEngine(env));
+      case "/dev/observe/test": {
+        // Inject synthetic detection(s) to drive the engine (no live hotspots).
+        const lat = Number(url.searchParams.get("lat") ?? "42.5");
+        const lng = Number(url.searchParams.get("lng") ?? "0.1");
+        const confidence = Number(url.searchParams.get("confidence") ?? "0.9");
+        const count = Math.min(10, Math.max(1, Number(url.searchParams.get("count") ?? "1")));
+        const now = new Date().toISOString();
+        const obs: Observation[] = Array.from({ length: count }, () => ({
+          id: crypto.randomUUID(), source: "TEST_INJECT", acquiredAt: now, ingestedAt: now,
+          h3Cell: cellFor(lat, lng), footprintGeojson: null, nominalResolutionM: 375,
+          geolocationUncertaintyM: 375, confidence, rawR2Key: null, props: { lat, lng, test: true },
+        }));
+        const written = await insertObservations(env, obs);
+        return json({ injected: written, cell: cellFor(lat, lng) });
+      }
       // Real AEMET feed + CPU-time instrumentation. Fetches once, then loops
       // decode+extract N times to report a stable per-run compute cost. This is
       // the CPU-billed portion (the network fetch is I/O and not CPU time).
