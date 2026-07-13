@@ -180,16 +180,32 @@ export async function officialFireWeatherLevel(env: Env, now: string): Promise<n
 // --- Decision engine (Phase 3) ----------------------------------------------
 export async function observationsSince(env: Env, sinceIso: string) {
   const { results } = await env.DB.prepare(
-    `SELECT id, h3_cell, confidence, acquired_at FROM observation
-       WHERE acquired_at >= ? ORDER BY acquired_at DESC`,
-  ).bind(sinceIso).all<{ id: string; h3_cell: string; confidence: number | null; acquired_at: string }>();
+    `SELECT id, h3_cell, confidence, acquired_at, source, nominal_resolution_m, geolocation_uncertainty_m
+       FROM observation WHERE acquired_at >= ? ORDER BY acquired_at DESC`,
+  ).bind(sinceIso).all<{
+    id: string; h3_cell: string; confidence: number | null; acquired_at: string;
+    source: string; nominal_resolution_m: number | null; geolocation_uncertainty_m: number | null;
+  }>();
   return results;
 }
 
 export async function activeEventByCell(env: Env, cell: string) {
+  // has_briefing lets the engine call the LLM only once per event lifetime.
   return env.DB.prepare(
-    `SELECT id FROM event WHERE h3_cell = ? AND status = 'active' LIMIT 1`,
-  ).bind(cell).first<{ id: string }>();
+    `SELECT id, (briefing_json IS NOT NULL) AS has_briefing
+       FROM event WHERE h3_cell = ? AND status = 'active' LIMIT 1`,
+  ).bind(cell).first<{ id: string; has_briefing: number }>();
+}
+
+export async function updateEventBriefing(
+  env: Env,
+  id: string,
+  briefingJson: string,
+  briefingText: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE event SET briefing_json = ?, briefing_text = ? WHERE id = ?`,
+  ).bind(briefingJson, briefingText, id).run();
 }
 
 export async function insertEvent(
@@ -214,7 +230,7 @@ export async function updateEvent(
 
 export async function activeEvents(env: Env) {
   const { results } = await env.DB.prepare(
-    `SELECT id, created_at, h3_cell, status, det_score, det_confidence, score_breakdown_json, observation_ids, briefing_text
+    `SELECT id, created_at, h3_cell, status, det_score, det_confidence, score_breakdown_json, observation_ids, briefing_json, briefing_text
        FROM event WHERE status = 'active' ORDER BY det_score DESC`,
   ).all();
   return results;

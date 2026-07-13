@@ -4,8 +4,13 @@
 # NASA FIRMS map key (free): https://firms.modaps.eosdis.nasa.gov/api/map_key/
 FIRMS_MAP_KEY=""
 
-# --- Reserved for later phases (not used in Phase 1) ---
-# OpenAI key, reached through Cloudflare AI Gateway (Phase 4)
+# AEMET OpenData key (lightning + avisos CAP feeds): https://opendata.aemet.es/
+AEMET_API_KEY=""
+
+# OpenAI key — AI briefing agent (Phase 4). Called directly (no AI Gateway).
+# Optional: if unset, the engine runs and simply skips briefings.
 OPENAI_API_KEY=""
+
+# --- Reserved for later phases ---
 # Telegram bot token for operational alerts (Phase 5)
 TELEGRAM_BOT_TOKEN=""

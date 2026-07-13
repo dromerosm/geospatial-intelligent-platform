@@ -124,6 +124,7 @@
     <div id="proj-seg"></div>
     <div id="firms-note" class="hint"></div>
     <div id="meteo-note" class="hint"></div>
+    <div id="events-note" class="hint"></div>
     <div id="legend">
       <div class="lg-title" id="legend-title">Leyenda</div>
       <div id="legend-rows"></div>
@@ -533,7 +534,48 @@
           return firmsLayer;
         }
 
+        // Events: above-threshold fire events with their AI briefing (Phase 4).
+        // Each event carries an H3 cell; resolve it to a centroid via h3-js and
+        // drop a marker coloured by the briefing's priority. The popup shows the
+        // plain-language briefing + the source-precision statement.
+        const eventsNote = document.getElementById("events-note");
+        const PRIO = { critical: "#e5484d", high: "#ff8c00", medium: "#e2b53d", low: "#6b7280" };
+        let eventsLayer = null;
+        async function loadEvents() {
+          if (eventsLayer) return eventsLayer;
+          let h3; try { h3 = await ensureH3(); } catch { eventsNote.textContent = "Eventos: no se pudo cargar h3-js"; return null; }
+          eventsLayer = L.layerGroup();
+          try {
+            const rows = await fetch("/events").then((r) => (r.ok ? r.json() : []));
+            let n = 0;
+            for (const e of rows) {
+              let ll; try { ll = h3.cellToLatLng(e.h3_cell); } catch { continue; }
+              let b = null; try { b = e.briefing_json ? JSON.parse(e.briefing_json) : null; } catch {}
+              const prio = b?.priority || "medium";
+              const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+              const actions = (b?.recommended_actions || []).map((a) => `<li>${esc(a)}</li>`).join("");
+              const popup =
+                `<div style="max-width:280px;font:13px/1.45 system-ui,sans-serif">` +
+                `<div style="font-weight:600;text-transform:uppercase;color:${PRIO[prio] || PRIO.medium}">${esc(prio)}</div>` +
+                `<div style="color:#666;font-size:11px;margin:2px 0 6px">${esc(e.h3_cell)} · score ${e.det_score} · conf ${e.det_confidence}</div>` +
+                (b ? `<div>${esc(b.briefing_text)}</div>` +
+                  (actions ? `<div style="font-weight:600;margin-top:6px">Acciones</div><ul style="margin:2px 0 0;padding-left:18px">${actions}</ul>` : "") +
+                  `<div style="color:#666;font-size:11px;margin-top:6px">${esc(b.source_precision_statement)}</div>`
+                  : `<div style="color:#666">Sin briefing todavía (se genera en la próxima pasada del motor).</div>`);
+              L.circleMarker(ll, { radius: 9, color: "#fff", weight: 1.5, fillColor: PRIO[prio] || PRIO.medium, fillOpacity: 0.9 })
+                .bindPopup(popup + "</div>")
+                .addTo(eventsLayer);
+              n++;
+            }
+            eventsNote.textContent = n ? `Eventos: ${n} activo(s) · pulsa un punto para el briefing` : "Eventos: ninguno activo ahora";
+          } catch {
+            eventsNote.textContent = "Eventos: solo disponible en el subdominio del proyecto";
+          }
+          return eventsLayer;
+        }
+
         const PROJ = {
+          eventos: { label: "Eventos + IA", get: loadEvents },
           effis: { label: "EFFIS histórico", get: () => effisLayer },
           firms: { label: "FIRMS focos", get: loadFirms },
           meteo: { label: "Meteo (viento)", get: loadMeteo },

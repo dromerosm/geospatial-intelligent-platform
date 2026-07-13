@@ -11,6 +11,9 @@ export interface Env {
   // Secrets (via .dev.vars locally / `wrangler secret put` in prod).
   FIRMS_MAP_KEY: string;
   AEMET_API_KEY: string;
+  // Phase 4: OpenAI key for the briefing agent. Optional — when unset the engine
+  // still runs deterministically and simply leaves briefings null.
+  OPENAI_API_KEY?: string;
 }
 
 /**

@@ -274,6 +274,8 @@ Weighted sum of **named contributions**, each written to `score_breakdown_json`:
 
 - **Guardrails:** the prompt states explicitly the model **does not detect fires**; it reasons over the deterministic score and evidence. The `source_precision_statement` is mandatory and must echo Part VI. The deterministic score, never the model, gates event creation.
 
+> **As built (Phase 4).** Implemented with **OpenAI `gpt-5-mini` called directly** (no AI Gateway — avoids extra moving parts/cost; the layer stays provider-swappable). Structured Outputs (strict json_schema); the briefing text is Spanish. Reasoning is currently off (`reasoning_effort: "minimal"`) because high reasoning added ~50 s/call for little gain here — an explicit priority rubric + per-field guidance in the prompt carries the load instead; tunable in `src/config.ts`. Called once per event (only when it has no briefing yet), best-effort and self-healing (a failed call is retried on the next engine pass), capped per run. Output schema adds a `briefing_text` field so one call yields both structured JSON and prose. See [`docs/ai-briefing.md`](../docs/ai-briefing.md).
+
 ---
 
 # Part VI — Spatial Resolution and Uncertainty Principle
@@ -321,8 +323,8 @@ Refine an event as evidence improves — MTG coarse footprint → VIIRS higher-r
 | **1. Ingest** ✅ | Cron Worker pulls FIRMS + Open-Meteo (+ FWI, AEMET lightning) → D1/R2 | Cron, D1, R2 |
 | **2. Digital Twin** ✅ | Batch job builds `digital_twin_cell` for the region (H3 res 7) | offline script → D1 |
 | **3. Decide** ✅ | Worker: cluster → enrich → explainable scoring + confidence gate + audit; weights/threshold in KV | Worker, D1, KV |
-| **4. Explain** ⬅ next | LLM briefing via AI Gateway on ≥threshold events | AI Gateway, Secrets |
-| **5. Operate** | MapLibre map (footprints) + REST API + Telegram alert | Pages, Worker, DO(optional) |
+| **4. Explain** ✅ | LLM briefing on ≥threshold events (single call, structured output) | OpenAI `gpt-5-mini` (direct), Secrets |
+| **5. Operate** ⬅ next | MapLibre map (footprints) + REST API + Telegram alert | Pages, Worker, DO(optional) |
 | **6. Fast-follow** | Lightning Watch (DO), MTG/Copernicus, Vectorize RAG, Teams/Email | DO, Workers AI, Vectorize |
 
 ## Cost model (order of magnitude, v1)

@@ -234,7 +234,7 @@ const LLMS_TXT = `# Geospatial Intelligence Platform
 - [Fire weather](https://geospatial-platform.diegoromero.es/fire-weather): per-cell fire weather (current + FWI + 3-day forecast; append ?cell=<h3>)
 - [Lightning](https://geospatial-platform.diegoromero.es/lightning): active lightning watches
 - [Alerts](https://geospatial-platform.diegoromero.es/alerts): active external authoritative alerts (GDACS wildfire + AEMET avisos)
-- [Events](https://geospatial-platform.diegoromero.es/events): active fire events with the explainable score breakdown
+- [Events](https://geospatial-platform.diegoromero.es/events): active fire events with the explainable score breakdown and the AI operational briefing (Phase 4)
 
 ## Pages
 - [Landing](https://geospatial-platform.diegoromero.es/): project status, data sources and architecture

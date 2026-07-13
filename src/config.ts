@@ -58,3 +58,21 @@ export const AEMET_AVISOS_URL = (area: string, key: string) =>
   `https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/${area}?api_key=${key}`;
 /** AEMET Meteoalerta phenomenon codes that drive/represent wildfire risk. */
 export const AEMET_FIRE_PHENOMENA = ["AT", "VI", "TO"] as const; // heat, wind, thunderstorm
+
+// --- AI briefing agent (Phase 4) --------------------------------------------
+// A single OpenAI call turns an above-threshold event into a plain-language
+// operational briefing + structured JSON. Called DIRECTLY (no AI Gateway) to
+// avoid extra moving parts. The reasoning layer is provider-agnostic: swapping
+// providers means editing only this block + src/ai/briefing.ts.
+export const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+export const OPENAI_MODEL = "gpt-5-mini";
+// Reasoning is OFF for now ("minimal"): high reasoning added ~50 s of latency per
+// call for little operational gain here — the deterministic engine already did the
+// analysis, so the model only needs to phrase it. A stronger, explicit prompt
+// carries the load instead (see src/ai/briefing.ts). Bump this to "low"/"medium"/
+// "high" later if briefings need deeper synthesis.
+export const OPENAI_REASONING_EFFORT = "minimal";
+// Bound the call so a cron pass can't hang. With minimal reasoning a call returns
+// in a few seconds; keep headroom. If it aborts, the briefing stays null and the
+// next engine pass retries it (self-healing — the engine only briefs events with none).
+export const OPENAI_TIMEOUT_MS = 30_000;

@@ -28,7 +28,7 @@ flowchart TB
   SRC --> BLD["Build Digital Twin · H3"]
   BLD --> D1
   D1 --> DET["Deterministic engine<br/>explainable scoring<br/>+ official corroboration"]
-  DET -->|"≥ threshold"| AIG["AI reasoning<br/>AI Gateway"]
+  DET -->|"≥ threshold"| AIG["AI reasoning<br/>OpenAI gpt-5-mini"]
   DET -->|"< threshold"| AUD["Audit log"]
   AIG --> BR["Operational briefing"]
   BR --> OPS["Map · API · Telegram"]
@@ -38,7 +38,8 @@ Dynamic feeds refresh on Cron (FIRMS 15 min, weather every 3 h, lightning 4×/da
 hourly, AEMET avisos every 6 h); the Digital Twin is a batch rebuild run on demand. GDACS
 and AEMET avisos are official alerts stored in `hazard_alert` and used by the engine to
 corroborate its own decisions. The deterministic engine is the only component that creates
-events; the LLM runs only above threshold. The same diagram is embedded on the landing
+events; the LLM runs only above threshold, and only to phrase a briefing — never to detect
+or gate (see [AI briefing](ai-briefing.md)). The same diagram is embedded on the landing
 page as a pre-rendered inline SVG (zero JS, so Lighthouse stays at 100).
 
 ## 1. Everything on Cloudflare

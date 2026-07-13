@@ -18,7 +18,7 @@ Production domain: **https://geospatial-platform.diegoromero.es**
 | Store | Observations, fire weather, events, audit | **D1** (SQLite) |
 | Twin | Precomputed per-cell context, keyed by **H3** | D1 (Phase 2) |
 | Decide | Explainable deterministic scoring — authoritative for events | Worker (Phase 3) |
-| Explain | Single LLM briefing, above threshold only | **OpenAI via AI Gateway** (Phase 4) |
+| Explain | Single LLM briefing, above threshold only | **OpenAI `gpt-5-mini`, direct** (Phase 4) |
 | Operate | Map + REST + Telegram alerts | **Pages** + Worker (Phase 5) |
 
 No PostGIS: spatial joins are by **H3 cell key**; geometry math runs in the Worker
@@ -42,7 +42,7 @@ src/
 docs/             Architecture notes
 ```
 
-## What runs today (Phases 1–2)
+## What runs today (Phases 1–4)
 
 - Every 15 min: FIRMS VIIRS hotspots for Aragón → normalised → D1 (`observation`), raw CSV → R2.
 - Every 3 h: Open-Meteo fire weather sampled over a grid → D1 (`fire_weather`), Triple-30 flagged.
@@ -54,7 +54,14 @@ docs/             Architecture notes
   Anual 2025 population + density + full age breakdown (children 0-14, adults 15-64, elderly
   65+), by census section**, **CORINE land cover → fuel class**, **EFFIS fire history**, and distance-to-asset.
   Built offline via `npm run twin:build` (see [`docs/deploy.md`](docs/deploy.md)).
-- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`, `/lightning`, `/alerts`, `/events`.
+- **Deterministic engine** (every FIRMS pass): clusters detections by H3 cell, enriches with
+  the Twin + nearest fire weather + lightning + official corroboration, scores explainably,
+  and creates an event only above the confidence threshold (weights/threshold tunable in KV).
+- **AI briefing** (Phase 4): for each above-threshold event, one direct OpenAI `gpt-5-mini`
+  call produces a Spanish operational briefing + structured JSON (priority, conflicting
+  evidence, actions, source-precision statement). Explains, never detects — see
+  [`docs/ai-briefing.md`](docs/ai-briefing.md).
+- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`, `/lightning`, `/alerts`, `/events` (with the AI briefing).
 - Every ingestion writes an `audit_log` row.
 
 ## One-time setup
@@ -76,6 +83,8 @@ npm run db:apply:remote      # add --local for the local dev DB
 # Secrets
 cp .dev.vars.example .dev.vars    # put your FIRMS_MAP_KEY here for local dev
 npx wrangler secret put FIRMS_MAP_KEY   # for production
+npx wrangler secret put AEMET_API_KEY   # lightning + avisos feeds
+npx wrangler secret put OPENAI_API_KEY  # Phase 4 AI briefing (optional: unset = no briefings)
 ```
 
 ## Develop & deploy
@@ -92,10 +101,10 @@ npm run deploy         # deploy Worker; provisions the custom domain on first ru
 The custom domain requires the `diegoromero.es` zone on the same Cloudflare account.
 
 Full deploy, verification and rollback procedures: [`docs/deploy.md`](docs/deploy.md).
-Phases 1–3 are **live** at https://geospatial-platform.diegoromero.es.
+Phases 1–4 are **live** at https://geospatial-platform.diegoromero.es.
 
 ## Roadmap
 
-Phases 0–3 (bootstrap + ingest + Digital Twin + deterministic engine) are implemented.
-Next: **Phase 4** LLM briefing via AI Gateway (only for events above threshold), **Phase 5**
-map + Telegram. See the [master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).
+Phases 0–4 (bootstrap + ingest + Digital Twin + deterministic engine + AI briefing) are
+implemented. Next: **Phase 5** map (footprints) + Telegram alerts. See the
+[master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).
