@@ -59,6 +59,12 @@ priority; popup shows the briefing + precision statement).
 - **Best-effort & self-healing.** The event is deterministic and already persisted; a
   failed/timed-out call just leaves the briefing null and is audited (`stage='ai'`). Because
   the engine only briefs events lacking one, the **next pass retries** automatically.
+- **Rate limits (Groq gpt-oss-120b free tier): 1,000 requests/day (RPD) and 8,000
+  tokens/minute (TPM).** A briefing is ~2,000 tokens, so `MAX_BRIEFINGS_PER_RUN = 3` (~6k)
+  stays under TPM within a pass, and passes are ≥15 min apart — normal operation never
+  approaches either limit (above-threshold events are rare). If a 429 does occur (e.g. a
+  burst), the engine **stops briefing for the rest of that pass** and retries the remainder
+  next pass, so it never hammers the API while limited; the 429 + any `Retry-After` are audited.
 - If the active provider's key is unset the engine still runs and simply skips briefings.
 
 ## Config & secret

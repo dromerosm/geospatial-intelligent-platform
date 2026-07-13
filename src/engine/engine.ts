@@ -8,7 +8,7 @@
 // is here. Kept deliberately simple: cluster by exact cell (k-ring merge is a
 // documented refinement), one active event per cell.
 import { cellToLatLng } from "h3-js";
-import { aiApiKey, generateBriefing, type BriefingInput } from "../ai/briefing.js";
+import { aiApiKey, generateBriefing, type AiError, type BriefingInput } from "../ai/briefing.js";
 import {
   activeEventByCell, activeWildfireAlert, digitalTwinCell, fireWeatherCell, hasActiveLightningWatch,
   insertEvent, observationsSince, officialFireWeatherLevel, updateEvent, updateEventBriefing, writeAudit,
@@ -27,9 +27,9 @@ type ObsRow = Awaited<ReturnType<typeof observationsSince>>[number];
 async function briefEvent(
   env: Env, eventId: string, cell: string, threshold: number,
   r: ScoreResult, ctx: BriefingInput["context"], municipio: string | null, group: ObsRow[],
-): Promise<void> {
+): Promise<{ rateLimited: boolean }> {
   const apiKey = aiApiKey(env);
-  if (!apiKey) return;
+  if (!apiKey) return { rateLimited: false };
   const input: BriefingInput = {
     cell, municipio, score: r.score, confidence: r.confidence, threshold,
     contributions: r.breakdown.contributions, weighted: r.breakdown.weighted, context: ctx,
@@ -42,19 +42,26 @@ async function briefEvent(
     const brief = await generateBriefing(apiKey, input);
     await updateEventBriefing(env, eventId, JSON.stringify(brief.json), brief.json.briefing_text);
     await writeAudit(env, "ai", { eventId, cell, model: brief.model, priority: brief.json.priority, usage: brief.usage });
+    return { rateLimited: false };
   } catch (err) {
-    await writeAudit(env, "ai", { eventId, cell, error: String(err) });
+    const status = (err as AiError)?.status;
+    const rateLimited = status === 429;
+    await writeAudit(env, "ai", { eventId, cell, error: String(err), ...(rateLimited ? { rateLimited, retryAfter: (err as AiError).retryAfter } : {}) });
     console.error(`briefing failed for ${eventId}:`, err);
+    // On a rate limit, tell the caller to stop briefing for the rest of the pass.
+    return { rateLimited };
   }
 }
 
 /** Detections within this window feed persistence/clustering. */
 const WINDOW_H = 24;
 
-// High-reasoning briefings cost ~50 s each, so cap how many one pass generates
-// to bound its added latency. Any events left unbriefed are picked up by the
-// next pass (the engine only briefs events that still have none). Events above
-// threshold are rare in practice, so this almost never bites.
+// Cap how many briefings one pass generates. Two reasons: bound the pass's added
+// latency, and stay under the provider's per-minute token budget. Groq gpt-oss-120b
+// free tier is 8,000 tokens/min and a briefing is ~2,000 tokens, so 3/pass (~6k)
+// stays comfortably under it; passes are ≥15 min apart, and daily volume (RPD 1,000)
+// is never approached since above-threshold events are rare. Unbriefed events are
+// picked up by the next pass (the engine only briefs events that still have none).
 const MAX_BRIEFINGS_PER_RUN = 3;
 
 /**
@@ -104,6 +111,7 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
   let events = 0;
   let subthreshold = 0;
   let briefed = 0;
+  let rateLimited = false; // once true, skip briefings for the rest of this pass
   for (const [cell, group] of byCell) {
     const twin = (await digitalTwinCell(env, cell)) as Record<string, any> | null;
     const fw = (await fireWeatherCell(env, nearestWeatherCell(cell))) as Record<string, any> | null;
@@ -141,9 +149,10 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
         needsBriefing = true;
       }
       events++;
-      if (needsBriefing && briefed < MAX_BRIEFINGS_PER_RUN) {
-        await briefEvent(env, eventId, cell, threshold, r, ctx, twin?.municipio ?? null, group);
+      if (needsBriefing && briefed < MAX_BRIEFINGS_PER_RUN && !rateLimited) {
+        const res = await briefEvent(env, eventId, cell, threshold, r, ctx, twin?.municipio ?? null, group);
         briefed++;
+        rateLimited = res.rateLimited; // 429 -> stop briefing the rest; next pass retries
       }
     } else {
       await writeAudit(env, "score", { cell, confidence: r.confidence, score: r.score, reason: "below_threshold" });
@@ -151,6 +160,6 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
     }
   }
 
-  await writeAudit(env, "engine", { window_h: WINDOW_H, clusters: byCell.size, events, subthreshold });
+  await writeAudit(env, "engine", { window_h: WINDOW_H, clusters: byCell.size, events, subthreshold, briefed, rateLimited });
   return { clusters: byCell.size, events, subthreshold };
 }

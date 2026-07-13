@@ -53,6 +53,9 @@ export interface BriefingInput {
   observations: BriefingObservation[];
 }
 
+/** Error thrown on a non-2xx AI response; `status` lets the engine detect 429. */
+export type AiError = Error & { status?: number; retryAfter?: string | null };
+
 export interface BriefingResult {
   json: {
     priority: "low" | "medium" | "high" | "critical";
@@ -165,7 +168,14 @@ export async function generateBriefing(apiKey: string, input: BriefingInput): Pr
         response_format: RESPONSE_SCHEMA,
       }),
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      // Carry the status + Retry-After so the engine can back off on 429
+      // (rate limit) and stop briefing the rest of the pass.
+      const err = new Error(`AI ${res.status}: ${(await res.text()).slice(0, 300)}`) as AiError;
+      err.status = res.status;
+      err.retryAfter = res.headers.get("retry-after");
+      throw err;
+    }
     const body = await res.json<any>();
     const content = body?.choices?.[0]?.message?.content;
     if (!content) throw new Error("OpenAI returned no content");
