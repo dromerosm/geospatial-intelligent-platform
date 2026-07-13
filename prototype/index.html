@@ -241,13 +241,13 @@
     window.addEventListener("resize", () => map.invalidateSize());
 
     // --- Basemaps + NASA GIBS satellite layers --------------------------------
-    // GIBS daily true-colour lags a few hours, so "yesterday" is often not
-    // processed yet (tiles 404). Start on a safe 2-days-back date (reliably
-    // available) and let the async probe below upgrade to yesterday if ready.
+    // GIBS daily reflectance lags an amount that VARIES (right now even 2 days
+    // back 404s). Start on a conservative 3-days-back guess, then the async probe
+    // below descends from yesterday and locks onto the freshest date with tiles.
     const GIBS_WMTS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
     const GIBS_WMS = "https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi";
     const gibsAttr = "Imagery © NASA EOSDIS GIBS";
-    let GIBS_DATE = new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10);
+    let GIBS_DATE = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
     const gibsWmtsUrl = (id, matrix, ext, date) => `${GIBS_WMTS}/${id}/default/${date}/${matrix}/{z}/{y}/{x}.${ext}`;
 
     // Raster reflectance basemaps (WMTS). Native zoom from the tile-matrix Level.
@@ -289,18 +289,24 @@
       firesMODIS: { label: "Focos MODIS",       layer: gibsWms("MODIS_Terra_Thermal_Anomalies_All") },
     };
 
-    // Upgrade the GIBS date to yesterday if its tiles are already processed
-    // (fresher than the safe 2-day default); applied in place to every GIBS layer.
+    // Lock onto the freshest GIBS date that actually has tiles: probe from
+    // yesterday backwards (the lag varies day to day) and use the first that
+    // responds, applying it in place to every GIBS layer (setUrl re-fetches, so
+    // this self-heals even if a satellite base is already shown).
     (async () => {
-      const y = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-      if (y === GIBS_DATE) return;
-      const probe = gibsWmtsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", "GoogleMapsCompatible_Level9", "jpg", y)
-        .replace("{z}/{y}/{x}", "2/1/1");
-      const ready = await fetch(probe).then((r) => r.ok).catch(() => false);
-      if (!ready) return;
-      GIBS_DATE = y;
-      [BASES.satelite.layer, BASES.falso.layer].forEach((l) => l.setUrl(gibsWmtsUrl(l._gibs.id, l._gibs.matrix, l._gibs.ext, y)));
-      Object.values(OVERLAYS).forEach((o) => o.layer.setParams({ time: y }));
+      for (let back = 1; back <= 7; back++) {
+        const d = new Date(Date.now() - back * 864e5).toISOString().slice(0, 10);
+        const probe = gibsWmtsUrl("VIIRS_SNPP_CorrectedReflectance_TrueColor", "GoogleMapsCompatible_Level9", "jpg", d)
+          .replace("{z}/{y}/{x}", "2/1/1");
+        const ready = await fetch(probe).then((r) => r.ok).catch(() => false);
+        if (!ready) continue;
+        if (d !== GIBS_DATE) {
+          GIBS_DATE = d;
+          [BASES.satelite.layer, BASES.falso.layer].forEach((l) => l.setUrl(gibsWmtsUrl(l._gibs.id, l._gibs.matrix, l._gibs.ext, d)));
+          Object.values(OVERLAYS).forEach((o) => o.layer.setParams({ time: d }));
+        }
+        return;
+      }
     })();
 
     // Base selector (radio).
