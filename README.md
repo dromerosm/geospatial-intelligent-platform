@@ -64,7 +64,11 @@ docs/             Architecture notes
 - **Telegram alerts** (Phase 5): each new high/critical event is pushed to an operations
   chat with its briefing + a deep link to the map (`/mapa/?event=<h3>`), once per event
   (deduped, best-effort). See [`docs/telegram-alerts.md`](docs/telegram-alerts.md).
-- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`, `/lightning`, `/alerts`, `/events` (with the AI briefing).
+- **Event lifecycle**: each engine pass closes active events whose cell has had no
+  detection in the staleness window (`status`→`closed`, `closed_at`), so `/events` shows
+  only what is still burning. Closed rows stay for history (`/events?status=closed|all`).
+- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`, `/lightning`, `/alerts`, `/events[?status=active|closed|all]` (with the AI briefing).
+  Interactive docs at **`/docs`** (Swagger UI), spec at **`/openapi.json`** (OpenAPI 3.1).
 - Every ingestion writes an `audit_log` row.
 
 ## One-time setup

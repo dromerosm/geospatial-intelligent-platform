@@ -17,6 +17,7 @@ import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
 import { cellFor } from "./lib/h3.js";
 import { buildMessage, sendTelegram } from "./notify/telegram.js";
+import { openApiSpec, SWAGGER_UI_HTML } from "./openapi.js";
 import type { Env, Observation } from "./types.js";
 import LANDING from "./landing.html";
 
@@ -237,6 +238,10 @@ const LLMS_TXT = `# Geospatial Intelligence Platform
 - [Alerts](https://geospatial-platform.diegoromero.es/alerts): active external authoritative alerts (GDACS wildfire + AEMET avisos)
 - [Events](https://geospatial-platform.diegoromero.es/events): active fire events with the explainable score breakdown and the AI operational briefing (Phase 4)
 
+## API docs
+- [Swagger UI](https://geospatial-platform.diegoromero.es/docs): interactive API documentation
+- [OpenAPI spec](https://geospatial-platform.diegoromero.es/openapi.json): OpenAPI 3.1 (JSON)
+
 ## Pages
 - [Landing](https://geospatial-platform.diegoromero.es/): project status, data sources and architecture
 - [Map](https://geospatial-platform.diegoromero.es/mapa): interactive digital-twin map
@@ -293,6 +298,10 @@ export default {
     switch (pathname) {
       case "/":
         return html(LANDING);
+      case "/docs":
+        return html(SWAGGER_UI_HTML);
+      case "/openapi.json":
+        return json(openApiSpec());
       case "/robots.txt":
         return text(ROBOTS_TXT);
       case "/llms.txt":
@@ -329,8 +338,12 @@ export default {
         return json(await activeLightningWatches(env, new Date().toISOString()));
       case "/alerts":
         return json(await activeHazardAlerts(env, new Date().toISOString()));
-      case "/events":
-        return json(await activeEvents(env));
+      case "/events": {
+        // ?status=active (default) | closed | all — lifecycle visibility.
+        const s = url.searchParams.get("status");
+        const status = s === "closed" || s === "all" ? s : "active";
+        return json(await activeEvents(env, status));
+      }
       case "/dev/ingest/gdacs":
         return json(await runGdacs(env));
       case "/dev/ingest/aemet-avisos":

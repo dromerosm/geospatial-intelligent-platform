@@ -11,7 +11,7 @@ import { cellToLatLng } from "h3-js";
 import { aiApiKey, generateBriefing, type AiError, type BriefingInput } from "../ai/briefing.js";
 import { DEFAULT_MIN_PRIORITY, MAX_NOTIFICATIONS_PER_RUN, PRIORITY_RANK } from "../config.js";
 import {
-  activeEventByCell, activeWildfireAlert, digitalTwinCell, fireWeatherCell, hasActiveLightningWatch,
+  activeEventByCell, activeWildfireAlert, closeStaleEvents, digitalTwinCell, fireWeatherCell, hasActiveLightningWatch,
   insertEvent, markNotified, observationsSince, officialFireWeatherLevel, updateEvent, updateEventBriefing, writeAudit,
 } from "../db.js";
 import { buildMessage, sendTelegram, type AlertBriefing, type TelegramError } from "../notify/telegram.js";
@@ -96,6 +96,11 @@ async function notifyEvent(
 /** Detections within this window feed persistence/clustering. */
 const WINDOW_H = 24;
 
+/** An active event whose cell has had no detection within this window is closed
+ *  (the fire is no longer observed). Same as the clustering window: an event stays
+ *  active exactly while detections keep it in the window. */
+const CLOSE_STALE_H = 24;
+
 // Cap how many briefings one pass generates. Two reasons: bound the pass's added
 // latency, and stay under the provider's per-minute token budget. Groq gpt-oss-120b
 // free tier is 8,000 tokens/min and a briefing is ~2,000 tokens, so 3/pass (~6k)
@@ -129,7 +134,7 @@ function nearestWeatherCell(cell: string): string {
   return cellFor(best.lat, best.lng);
 }
 
-export async function runDecisionEngine(env: Env): Promise<{ clusters: number; events: number; subthreshold: number }> {
+export async function runDecisionEngine(env: Env): Promise<{ clusters: number; events: number; subthreshold: number; closed: number }> {
   const nowIso = new Date().toISOString();
   const { weights, threshold } = await loadEngineConfig(env);
   const since = new Date(Date.now() - WINDOW_H * 3600_000).toISOString();
@@ -216,6 +221,11 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
     }
   }
 
-  await writeAudit(env, "engine", { window_h: WINDOW_H, clusters: byCell.size, events, subthreshold, briefed, rateLimited, notified, notifyRateLimited });
-  return { clusters: byCell.size, events, subthreshold };
+  // Lifecycle: close active events whose cell has gone quiet (no detection in the
+  // staleness window). Cheap single UPDATE; keeps /events to what is still burning.
+  const staleSince = new Date(Date.now() - CLOSE_STALE_H * 3600_000).toISOString();
+  const closed = await closeStaleEvents(env, staleSince, nowIso);
+
+  await writeAudit(env, "engine", { window_h: WINDOW_H, clusters: byCell.size, events, subthreshold, briefed, rateLimited, notified, notifyRateLimited, closed });
+  return { clusters: byCell.size, events, subthreshold, closed };
 }

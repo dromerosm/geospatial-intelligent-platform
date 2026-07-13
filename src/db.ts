@@ -233,12 +233,27 @@ export async function updateEvent(
   ).bind(u.score, u.confidence, u.breakdown, u.obsIds, id).run();
 }
 
-export async function activeEvents(env: Env) {
-  const { results } = await env.DB.prepare(
-    `SELECT id, created_at, h3_cell, status, det_score, det_confidence, score_breakdown_json, observation_ids, briefing_json, briefing_text
-       FROM event WHERE status = 'active' ORDER BY det_score DESC`,
-  ).all();
+/** status: 'active' (default), 'closed', or 'all'. */
+export async function activeEvents(env: Env, status: "active" | "closed" | "all" = "active") {
+  const cols = `id, created_at, closed_at, h3_cell, status, det_score, det_confidence, score_breakdown_json, observation_ids, briefing_json, briefing_text`;
+  const stmt = status === "all"
+    ? env.DB.prepare(`SELECT ${cols} FROM event ORDER BY (status='active') DESC, det_score DESC`)
+    : env.DB.prepare(`SELECT ${cols} FROM event WHERE status = ? ORDER BY det_score DESC`).bind(status);
+  const { results } = await stmt.all();
   return results;
+}
+
+/**
+ * Close active events whose cell has had no detection since `sinceIso` (the fire
+ * is no longer observed). Returns how many were closed. One correlated UPDATE.
+ */
+export async function closeStaleEvents(env: Env, sinceIso: string, nowIso: string): Promise<number> {
+  const res = await env.DB.prepare(
+    `UPDATE event SET status='closed', closed_at=?
+       WHERE status='active'
+         AND NOT EXISTS (SELECT 1 FROM observation o WHERE o.h3_cell = event.h3_cell AND o.acquired_at >= ?)`,
+  ).bind(nowIso, sinceIso).run();
+  return res.meta.changes ?? 0;
 }
 
 export async function writeAudit(env: Env, stage: string, detail: unknown): Promise<void> {

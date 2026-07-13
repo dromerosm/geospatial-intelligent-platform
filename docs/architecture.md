@@ -233,3 +233,16 @@ active event per cell keeps the model simple and idempotent.
   (`lib/fwi.ts`). If an official European reference is wanted, the daily forecast raster
   belongs in the **offline Digital-Twin build** (`scripts/build-digital-twin.mjs`, where EFFIS
   burnt-area *history* already lives), not on the edge — added there the same way, on demand.
+
+## 8. Event lifecycle & API docs (Phases 5–6)
+
+- **Lifecycle** — the engine creates events `active`; each pass then closes any active
+  event whose cell has had **no detection in the staleness window** (`CLOSE_STALE_H`,
+  same 24 h as clustering) via one correlated `UPDATE` (`db.closeStaleEvents`). So
+  `/events` stays the *currently burning* view; closed rows remain for history
+  (`?status=closed|all`, `closed_at` set). Re-ignition after close simply becomes a new
+  event (a closed row never re-opens). Migration `0011`.
+- **OpenAPI / Swagger** — the read-only API is described by a hand-written OpenAPI 3.1 doc
+  (`src/openapi.ts`, kept in sync with `index.ts`), served at `/openapi.json` and rendered
+  by Swagger UI at `/docs` (CDN assets, like the map's Leaflet; server `/` so "Try it out"
+  hits this host). Neither path is rate-limited.
