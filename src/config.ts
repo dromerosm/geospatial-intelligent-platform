@@ -38,3 +38,23 @@ export const TRIPLE30 = { tempC: 30, windKmh: 30, rhPct: 30 } as const;
 // --- Lightning Watch --------------------------------------------------------
 /** Monitoring window opened by a cloud-to-ground strike (spec: 24-72 h). */
 export const LIGHTNING_WATCH_HOURS = 48;
+
+// --- Hazard alerts (external authoritative warnings) ------------------------
+// GDACS — Global Disaster Alert and Coordination System (JRC/UN). The EVENTS4APP
+// endpoint returns a GeoJSON FeatureCollection; ?eventtypes=WF = wildfires only.
+// Coordinates are [lon,lat]; alertlevel is Green/Orange/Red. We keep Spain-wide
+// wildfire alerts and flag the ones overlapping Aragón (context + corroboration).
+export const GDACS_WF_URL =
+  "https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP?eventtypes=WF";
+/** ISO3 country codes whose GDACS wildfire alerts we retain. */
+export const GDACS_KEEP_ISO3 = ["ESP"] as const;
+
+// AEMET avisos (CAP 1.2) — Spain's official adverse-weather warnings. OpenData
+// area code 62 = Aragón (61 is Andalucía, etc.). `ultimoelaborado` returns a
+// JSON pointer whose `datos` URL is a POSIX tar of one CAP XML per phenomenon.
+// Requires the same AEMET_API_KEY already used for the lightning feed.
+export const AEMET_AVISOS_AREA = "62"; // Aragón
+export const AEMET_AVISOS_URL = (area: string, key: string) =>
+  `https://opendata.aemet.es/opendata/api/avisos_cap/ultimoelaborado/area/${area}?api_key=${key}`;
+/** AEMET Meteoalerta phenomenon codes that drive/represent wildfire risk. */
+export const AEMET_FIRE_PHENOMENA = ["AT", "VI", "TO"] as const; // heat, wind, thunderstorm

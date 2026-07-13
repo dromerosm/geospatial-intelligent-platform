@@ -36,6 +36,8 @@ src/
   db.ts           Small D1 access layer
   ingest/firms.ts NASA FIRMS pull + CSV -> Observation
   ingest/weather.ts Open-Meteo fire weather -> per-cell rows
+  ingest/gdacs.ts GDACS wildfire alerts (GeoJSON) -> HazardAlert
+  ingest/aemet-avisos.ts AEMET avisos CAP (tar of XML) -> HazardAlert
   lib/h3.ts       H3 cell + footprint helpers
 docs/             Architecture notes
 ```
@@ -43,12 +45,16 @@ docs/             Architecture notes
 ## What runs today (Phases 1–2)
 
 - Every 15 min: FIRMS VIIRS hotspots for Aragón → normalised → D1 (`observation`), raw CSV → R2.
-- Hourly: Open-Meteo fire weather sampled over a grid → D1 (`fire_weather`), Triple-30 flagged.
+- Every 3 h: Open-Meteo fire weather sampled over a grid → D1 (`fire_weather`), Triple-30 flagged.
+- 00/06/12/18Z: AEMET lightning strikes → `lightning_watch` monitoring windows.
+- **Official authoritative alerts** → D1 (`hazard_alert`), pruned on expiry:
+  - Hourly: **GDACS** wildfire alerts (JRC/UN) for Spain + Aragón — the engine corroborates its events against them.
+  - Every 6 h: **AEMET avisos** (CAP 1.2, area 62 = Aragón) — official heat/wind/thunderstorm warnings that raise the engine's fire-weather floor.
 - **Digital Twin**: ~9.4k H3 res-7 cells for Aragón — terrain (slope/aspect), **INE Censo
   Anual 2025 population + density + full age breakdown (children 0-14, adults 15-64, elderly
   65+), by census section**, **CORINE land cover → fuel class**, **EFFIS fire history**, and distance-to-asset.
   Built offline via `npm run twin:build` (see [`docs/deploy.md`](docs/deploy.md)).
-- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`.
+- Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`, `/lightning`, `/alerts`, `/events`.
 - Every ingestion writes an `audit_log` row.
 
 ## One-time setup

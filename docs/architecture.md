@@ -11,6 +11,9 @@ flowchart TB
     direction LR
     FIRMS["NASA FIRMS<br/>hotspots · every 15 min"]
     METEO["Open-Meteo<br/>fire-weather · every 3 h"]
+    RAYOS["AEMET rayos<br/>lightning · 00/06/12/18Z"]
+    GDACS["GDACS<br/>wildfire alerts · hourly"]
+    AVISOS["AEMET avisos CAP<br/>warnings · every 6 h"]
   end
   subgraph SRC["Digital Twin sources · batch, on demand"]
     direction LR
@@ -24,15 +27,17 @@ flowchart TB
   WK --> R2[("R2 · raw")]
   SRC --> BLD["Build Digital Twin · H3"]
   BLD --> D1
-  D1 --> DET["Deterministic engine<br/>explainable scoring"]
+  D1 --> DET["Deterministic engine<br/>explainable scoring<br/>+ official corroboration"]
   DET -->|"≥ threshold"| AIG["AI reasoning<br/>AI Gateway"]
   DET -->|"< threshold"| AUD["Audit log"]
   AIG --> BR["Operational briefing"]
   BR --> OPS["Map · API · Telegram"]
 ```
 
-Dynamic feeds refresh on Cron (FIRMS 15 min, weather every 3 h); the Digital Twin is a
-batch rebuild run on demand. The deterministic engine is the only component that creates
+Dynamic feeds refresh on Cron (FIRMS 15 min, weather every 3 h, lightning 4×/day, GDACS
+hourly, AEMET avisos every 6 h); the Digital Twin is a batch rebuild run on demand. GDACS
+and AEMET avisos are official alerts stored in `hazard_alert` and used by the engine to
+corroborate its own decisions. The deterministic engine is the only component that creates
 events; the LLM runs only above threshold. The same diagram is embedded on the landing
 page as a pre-rendered inline SVG (zero JS, so Lighthouse stays at 100).
 
@@ -79,6 +84,13 @@ at another region is a one-file edit (plus rebuilding the Digital Twin).
 |------|--------|---------|------|-------|
 | Hotspots | NASA FIRMS — VIIRS SNPP + NOAA-20 + NOAA-21 + MODIS (Area CSV API) | 15 min | free map key | all constellations merged; deterministic ids dedup re-fetches |
 | Fire weather | Open-Meteo current + 3-day hourly forecast | every 3 h | none | 213-point surface-uniform grid clipped to Aragón (~15 km), one bulk call; Triple-30 + `forecast_json` per point |
+| Lightning | AEMET rayos (McIDAS GIF, decoded) | 00/06/12/18Z | AEMET key | cloud-to-ground strikes → `lightning_watch` windows (~5–15 km) |
+| Wildfire alerts | **GDACS** — EVENTS4APP WF GeoJSON (JRC/UN) | hourly | none | Spain + Aragón; alert level Green/Orange/Red → `hazard_alert`; corroborates engine confidence |
+| Weather warnings | **AEMET avisos** — CAP 1.2, `ultimoelaborado/area/62` (Aragón) | every 6 h | AEMET key | tar of CAP XML, untarred + parsed in-Worker; heat/wind/storm → `hazard_alert`; raises engine fire-weather floor |
+
+Both alert feeds land in the shared `hazard_alert` table (migration 0009): discrete,
+expiring warnings from other agencies, kept alongside — never conflated with — the
+platform's own detections. Pruned once past `expires`. See §"Hazard alerts" below.
 
 ## 7. Digital Twin build (Phase 2)
 
@@ -150,15 +162,21 @@ pass over the recent detection window (24 h):
 
 1. **Cluster** detections by exact H3 cell (k-ring merge is a documented refinement).
 2. **Enrich** each cluster: Digital Twin cell (fuel/slope/population/exposure/municipio),
-   the **nearest fire-weather point** (213-grid → FWI/Triple-30), and any active
-   **lightning watch** on the cell.
+   the **nearest fire-weather point** (213-grid → FWI/Triple-30), any active
+   **lightning watch** on the cell, and **official corroboration** resolved once per pass
+   — a live **GDACS** wildfire alert over Aragón and the highest active **AEMET** fire-weather
+   warning level (`hazard_alert`).
 3. **Score** — `score.ts` is a pure, unit-tested function. Two outputs:
    - **confidence** (is it a real active fire): persistence + source confidence + a
-     lightning-watch boost. **Gates event creation.**
+     corroboration boost from a lightning watch **or** a GDACS wildfire alert. **Gates event
+     creation.**
    - **score** (operational priority): a weighted sum of five NAMED, normalised
      contributions — `persistence`, `source_confidence`, `fire_weather`,
-     `fuel_terrain`, `exposure`. Every raw/normalised/weighted value is echoed in
-     `score_breakdown_json`, so each decision is fully auditable.
+     `fuel_terrain`, `exposure`. An active AEMET fire-weather warning raises the
+     `fire_weather` floor to its level (amarillo/naranja/rojo). Every raw/normalised/weighted
+     value — plus the corroboration flags — is echoed in `score_breakdown_json`, so each
+     decision is fully auditable. The five weights are unchanged: official signals lift
+     existing contributions, they don't add a new one.
 4. **Decide**: if `confidence ≥ threshold` → create/update an active `event` (one per
    cell); else write an audit row (`stage='score'`, `below_threshold`). The LLM never
    runs here — that's Phase 4, only for events above threshold.
@@ -193,4 +211,24 @@ active event per cell keeps the model simple and idempotent.
   observations via a background + residual approach (correct Open-Meteo's local bias,
   don't interpolate the sparse stations). Design + roadmap:
   [`docs/meteo-bias-correction.md`](meteo-bias-correction.md). Blocked on ingesting
-  AEMET conventional observations (only lightning is ingested today).
+  AEMET conventional observations (today the platform ingests AEMET lightning and CAP
+  warnings, but not the station observation network).
+- **Hazard-alert zone precision** — AEMET warnings are matched to Aragón region-wide, not
+  per H3 cell: `officialFireWeatherLevel` is the max active fire-relevant level over the
+  region. Per-zone point-in-polygon (the CAP `<polygon>` per Meteoalerta zone → the cells it
+  covers) is a documented refinement, mirroring the k-ring clustering note. GDACS points are
+  coarse event centroids, so a wildfire alert corroborates region-wide, not per cell.
+- **Active-fire sources beyond FIRMS** — evaluated, none added (deliberate). EFFIS, GWIS
+  and every Spanish live-fire map are **NASA FIRMS-derived** (same MODIS/VIIRS, republished
+  2–3 h later), so redundant with the four constellations already ingested. Sentinel-3 SLSTR
+  FRP is another polar sensor (marginal) behind EUMETSAT granule access. The only genuinely
+  complementary option — geostationary **Meteosat SEVIRI FRP** (LSA SAF, 15-min) — needs a
+  EUMETSAT account and HDF/BUFR granule parsing, too heavy for an edge cron. Revisit only if
+  sub-hourly geostationary detection becomes a hard requirement.
+- **EFFIS Fire Danger Forecast (FWI)** — evaluated but **not** wired as a Worker cron. EFFIS
+  exposes fire danger only as WMS rasters (`ies-ows.jrc.ec.europa.eu`, layer `ecmwf.fwi.*`);
+  `GetFeatureInfo` point queries did not return values in testing, and there is no clean
+  per-point JSON/REST API. It is also largely redundant with the platform's own per-cell FWI
+  (`lib/fwi.ts`). If an official European reference is wanted, the daily forecast raster
+  belongs in the **offline Digital-Twin build** (`scripts/build-digital-twin.mjs`, where EFFIS
+  burnt-area *history* already lives), not on the edge — added there the same way, on demand.

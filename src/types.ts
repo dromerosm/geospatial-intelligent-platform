@@ -31,6 +31,32 @@ export interface Observation {
   props: Record<string, unknown>;
 }
 
+/**
+ * A discrete authoritative alert/warning issued by an external agency (GDACS,
+ * AEMET). Normalised so GDACS wildfire events and AEMET CAP warnings share one
+ * shape. Expiring, unlike the per-cell grids. See migrations/0009.
+ */
+export interface HazardAlert {
+  id: string; // deterministic: source + native id
+  source: "GDACS" | "AEMET_CAP";
+  category: string; // wildfire | heat | wind | thunderstorm | cold | rain | snow | coastal | other
+  fireRelevant: 0 | 1;
+  severity: string | null; // minor | moderate | severe | extreme
+  severityNum: number | null; // [0,1]
+  levelLabel: string | null; // native: verde/amarillo/naranja/rojo | Green/Orange/Red
+  headline: string | null;
+  areaDesc: string | null;
+  inRegion: 0 | 1; // overlaps the Aragón bbox
+  onset: string | null;
+  expires: string | null;
+  lat: number | null;
+  lng: number | null;
+  url: string | null;
+  rawR2Key: string | null;
+  ingestedAt: string;
+  props: Record<string, unknown>;
+}
+
 /** Latest fire weather for one cell. */
 export interface FireWeather {
   h3Cell: string;

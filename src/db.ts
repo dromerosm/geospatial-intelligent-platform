@@ -1,6 +1,6 @@
 // Thin D1 access layer. Kept deliberately small: batched writes for ingestion,
 // a couple of read helpers for the REST endpoints.
-import type { Env, FireWeather, Observation } from "./types.js";
+import type { Env, FireWeather, HazardAlert, Observation } from "./types.js";
 
 export async function insertObservations(env: Env, obs: Observation[]): Promise<number> {
   if (obs.length === 0) return 0;
@@ -103,6 +103,78 @@ export async function hasActiveLightningWatch(env: Env, cell: string, now: strin
     `SELECT 1 FROM lightning_watch WHERE h3_cell = ? AND expires_at > ? LIMIT 1`,
   ).bind(cell, now).first();
   return row != null;
+}
+
+// --- Hazard alerts (external authoritative warnings) ------------------------
+export async function upsertHazardAlerts(env: Env, rows: HazardAlert[]): Promise<number> {
+  if (rows.length === 0) return 0;
+  const stmt = env.DB.prepare(
+    `INSERT INTO hazard_alert
+       (id, source, category, fire_relevant, severity, severity_num, level_label, headline,
+        area_desc, in_region, onset, expires, lat, lng, url, raw_r2_key, ingested_at, props_json)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET
+       severity=excluded.severity, severity_num=excluded.severity_num, level_label=excluded.level_label,
+       headline=excluded.headline, area_desc=excluded.area_desc, in_region=excluded.in_region,
+       onset=excluded.onset, expires=excluded.expires, lat=excluded.lat, lng=excluded.lng,
+       url=excluded.url, raw_r2_key=excluded.raw_r2_key, ingested_at=excluded.ingested_at,
+       props_json=excluded.props_json`,
+  );
+  const batch = rows.map((a) =>
+    stmt.bind(
+      a.id, a.source, a.category, a.fireRelevant, a.severity, a.severityNum, a.levelLabel, a.headline,
+      a.areaDesc, a.inRegion, a.onset, a.expires, a.lat, a.lng, a.url, a.rawR2Key, a.ingestedAt,
+      JSON.stringify(a.props),
+    ),
+  );
+  await env.DB.batch(batch);
+  return rows.length;
+}
+
+/** Drop alerts that have expired (or, if no expiry, that are older than maxAgeH). */
+export async function pruneHazardAlerts(env: Env, now: string, maxAgeH = 48): Promise<void> {
+  const cutoff = new Date(new Date(now).getTime() - maxAgeH * 3600_000).toISOString();
+  await env.DB.prepare(
+    `DELETE FROM hazard_alert
+       WHERE (expires IS NOT NULL AND expires < ?)
+          OR (expires IS NULL AND ingested_at < ?)`,
+  ).bind(now, cutoff).run();
+}
+
+/** Currently-valid alerts (onset passed or null, not expired), highest severity first. */
+export async function activeHazardAlerts(env: Env, now: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, source, category, fire_relevant, severity, severity_num, level_label, headline,
+            area_desc, in_region, onset, expires, lat, lng, url
+       FROM hazard_alert
+       WHERE (expires IS NULL OR expires > ?) AND (onset IS NULL OR onset <= ?)
+       ORDER BY severity_num DESC, expires ASC`,
+  ).bind(now, now).all();
+  return results;
+}
+
+/** Is an official wildfire alert (GDACS) active over the region? (corroboration). */
+export async function activeWildfireAlert(env: Env, now: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 FROM hazard_alert
+       WHERE source = 'GDACS' AND category = 'wildfire' AND in_region = 1
+         AND (expires IS NULL OR expires > ?) AND (onset IS NULL OR onset <= ?) LIMIT 1`,
+  ).bind(now, now).first();
+  return row != null;
+}
+
+/**
+ * Highest official fire-weather warning level active over the region right now,
+ * as [0,1] (AEMET amarillo/naranja/rojo). 0 when only "verde"/none. A region-
+ * wide proxy; per-zone polygon containment is a documented refinement.
+ */
+export async function officialFireWeatherLevel(env: Env, now: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT MAX(severity_num) AS m FROM hazard_alert
+       WHERE source = 'AEMET_CAP' AND fire_relevant = 1 AND in_region = 1
+         AND (expires IS NULL OR expires > ?) AND (onset IS NULL OR onset <= ?)`,
+  ).bind(now, now).first<{ m: number | null }>();
+  return row?.m ?? 0;
 }
 
 // --- Decision engine (Phase 3) ----------------------------------------------

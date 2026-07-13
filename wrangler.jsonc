@@ -16,9 +16,11 @@
   //   0 12 * * *          -> advance the FWI System one day (noon)
   //   25 0,6,12,18 * * *  -> AEMET lightning feed (map updates 00/06/12/18Z;
   //                          the :25 offset clears AEMET's publish latency)
+  //   40 * * * *          -> GDACS official wildfire alerts (hourly)
+  //   50 */6 * * *        -> AEMET avisos CAP — official weather warnings (every 6 h)
   // Event-time weather is fetched on demand per detection (Phase 3), so the
   // background grid does not need to refresh hourly.
-  "triggers": { "crons": ["*/15 * * * *", "0 */3 * * *", "0 12 * * *", "25 0,6,12,18 * * *"] },
+  "triggers": { "crons": ["*/15 * * * *", "0 */3 * * *", "0 12 * * *", "25 0,6,12,18 * * *", "40 * * * *", "50 */6 * * *"] },
 
   "vars": { "REGION": "aragon" },
 

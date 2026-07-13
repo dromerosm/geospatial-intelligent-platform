@@ -6,10 +6,12 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { ARAGON_BBOX, FIRMS_SOURCES, LIGHTNING_WATCH_HOURS } from "./config.js";
-import { activeEvents, activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
+import { AEMET_AVISOS_AREA, ARAGON_BBOX, FIRMS_SOURCES, GDACS_WF_URL, LIGHTNING_WATCH_HOURS } from "./config.js";
+import { activeEvents, activeHazardAlerts, activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneHazardAlerts, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, upsertHazardAlerts, writeAudit } from "./db.js";
 import { loadEngineConfig, runDecisionEngine } from "./engine/engine.js";
+import { fetchAemetAvisosDatosUrl, fetchAemetAvisosTar, parseAemetAvisos } from "./ingest/aemet-avisos.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
+import { fetchGdacsWildfires, parseGdacs } from "./ingest/gdacs.js";
 import { assertFrame, decodeRayosGif, extractStrikes, fetchAemetRayosGif } from "./ingest/lightning-aemet.js";
 import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
 import { computeFwi, FWI_START } from "./lib/fwi.js";
@@ -159,6 +161,40 @@ async function runLightningAemet(env: Env): Promise<{ total: number; aragon: num
   return { total: strikes.length, aragon };
 }
 
+// GDACS wildfire alerts: pull the WF GeoJSON, keep Spain/Aragón, upsert, prune
+// expired. Archives raw JSON to R2 like the other feeds. Confirmation layer:
+// the decision engine corroborates its own events against these.
+async function runGdacs(env: Env): Promise<{ alerts: number; inRegion: number }> {
+  const now = new Date().toISOString();
+  const body = await fetchGdacsWildfires(GDACS_WF_URL);
+  const rawKey = `gdacs/${now}.json`;
+  await env.RAW.put(rawKey, body);
+  const alerts = parseGdacs(body, now, rawKey);
+  const written = await upsertHazardAlerts(env, alerts);
+  await pruneHazardAlerts(env, now);
+  const inRegion = alerts.filter((a) => a.inRegion).length;
+  await writeAudit(env, "ingest", { feed: "GDACS", alerts: written, inRegion, rawKey });
+  console.log(`GDACS: ${written} wildfire alerts (${inRegion} in Aragón)`);
+  return { alerts: written, inRegion };
+}
+
+// AEMET avisos (CAP): resolve the pointer, fetch the tar, untar + parse every
+// CAP file into normalised alerts, upsert, prune expired. Archives the raw tar.
+async function runAemetAvisos(env: Env): Promise<{ alerts: number; fireRelevant: number }> {
+  const now = new Date().toISOString();
+  const datosUrl = await fetchAemetAvisosDatosUrl(AEMET_AVISOS_AREA, env.AEMET_API_KEY);
+  const tar = await fetchAemetAvisosTar(datosUrl);
+  const rawKey = `aemet-avisos/${now}.tar`;
+  await env.RAW.put(rawKey, tar);
+  const alerts = parseAemetAvisos(tar, now, rawKey);
+  const written = await upsertHazardAlerts(env, alerts);
+  await pruneHazardAlerts(env, now);
+  const fireRelevant = alerts.filter((a) => a.fireRelevant).length;
+  await writeAudit(env, "ingest", { feed: "AEMET_CAP", area: AEMET_AVISOS_AREA, alerts: written, fireRelevant, rawKey });
+  console.log(`AEMET avisos: ${written} alerts (${fireRelevant} fire-relevant)`);
+  return { alerts: written, fireRelevant };
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -197,6 +233,7 @@ const LLMS_TXT = `# Geospatial Intelligence Platform
 - [Observations](https://geospatial-platform.diegoromero.es/observations): latest satellite detections
 - [Fire weather](https://geospatial-platform.diegoromero.es/fire-weather): per-cell fire weather (current + FWI + 3-day forecast; append ?cell=<h3>)
 - [Lightning](https://geospatial-platform.diegoromero.es/lightning): active lightning watches
+- [Alerts](https://geospatial-platform.diegoromero.es/alerts): active external authoritative alerts (GDACS wildfire + AEMET avisos)
 - [Events](https://geospatial-platform.diegoromero.es/events): active fire events with the explainable score breakdown
 
 ## Pages
@@ -204,7 +241,7 @@ const LLMS_TXT = `# Geospatial Intelligence Platform
 - [Map](https://geospatial-platform.diegoromero.es/mapa): interactive digital-twin map
 
 ## Data sources
-NASA FIRMS (hotspots), Open-Meteo (fire weather), INE Censo Anual 2025 (population by census section), CORINE Land Cover (fuel), EFFIS (fire history), OpenStreetMap and Open-Elevation.
+NASA FIRMS (hotspots), Open-Meteo (fire weather), GDACS (official wildfire alerts), AEMET avisos CAP (official weather warnings for Aragón), AEMET lightning, INE Censo Anual 2025 (population by census section), CORINE Land Cover (fuel), EFFIS (fire history), OpenStreetMap and Open-Elevation.
 `;
 
 export default {
@@ -213,6 +250,8 @@ export default {
       controller.cron === "0 12 * * *" ? runFwi(env)
       : controller.cron === "0 */3 * * *" ? runWeather(env)
       : controller.cron === "25 0,6,12,18 * * *" ? runLightningAemet(env)
+      : controller.cron === "40 * * * *" ? runGdacs(env)
+      : controller.cron === "50 */6 * * *" ? runAemetAvisos(env)
       : runFirms(env);
     ctx.waitUntil(job.catch((err) => console.error("scheduled error:", err)));
   },
@@ -237,7 +276,8 @@ export default {
     if (
       pathname === "/health" || pathname === "/observations" ||
       pathname === "/fire-weather" || pathname === "/digital-twin" ||
-      pathname === "/lightning" || pathname === "/events" || pathname.startsWith("/dev/")
+      pathname === "/lightning" || pathname === "/alerts" ||
+      pathname === "/events" || pathname.startsWith("/dev/")
     ) {
       const ip = req.headers.get("CF-Connecting-IP") ?? "anon";
       const { success } = await env.API_RL.limit({ key: ip });
@@ -286,8 +326,14 @@ export default {
       }
       case "/lightning":
         return json(await activeLightningWatches(env, new Date().toISOString()));
+      case "/alerts":
+        return json(await activeHazardAlerts(env, new Date().toISOString()));
       case "/events":
         return json(await activeEvents(env));
+      case "/dev/ingest/gdacs":
+        return json(await runGdacs(env));
+      case "/dev/ingest/aemet-avisos":
+        return json(await runAemetAvisos(env));
       case "/dev/engine/run":
         return json(await runDecisionEngine(env));
       case "/dev/engine/config":

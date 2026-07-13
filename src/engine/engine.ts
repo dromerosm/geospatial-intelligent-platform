@@ -9,8 +9,8 @@
 // documented refinement), one active event per cell.
 import { cellToLatLng } from "h3-js";
 import {
-  activeEventByCell, digitalTwinCell, fireWeatherCell, hasActiveLightningWatch,
-  insertEvent, observationsSince, updateEvent, writeAudit,
+  activeEventByCell, activeWildfireAlert, digitalTwinCell, fireWeatherCell, hasActiveLightningWatch,
+  insertEvent, observationsSince, officialFireWeatherLevel, updateEvent, writeAudit,
 } from "../db.js";
 import { weatherGrid } from "../ingest/weather.js";
 import { cellFor } from "../lib/h3.js";
@@ -51,6 +51,12 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
   const since = new Date(Date.now() - WINDOW_H * 3600_000).toISOString();
   const obs = await observationsSince(env, since);
 
+  // Official corroboration is region-wide, so resolve it once per pass:
+  //   • a live GDACS wildfire alert over Aragón, and
+  //   • the highest active AEMET fire-weather warning level.
+  const officialWildfire = await activeWildfireAlert(env, nowIso);
+  const officialFwLevel = await officialFireWeatherLevel(env, nowIso);
+
   // Cluster by exact H3 cell.
   const byCell = new Map<string, typeof obs>();
   for (const o of obs) {
@@ -76,6 +82,8 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
       populationDensity: twin?.population_density ?? null,
       popElderly: twin?.pop_elderly ?? null,
       distAssetM: twin?.dist_asset_m ?? null,
+      officialWildfireAlert: officialWildfire,
+      officialFireWeatherLevel: officialFwLevel,
     };
     const r = scoreDetection(ctx, weights);
     const obsIds = JSON.stringify(group.map((o) => o.id));

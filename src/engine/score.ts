@@ -18,6 +18,10 @@ export interface ScoreContext {
   populationDensity: number | null; // people/km²
   popElderly: number | null; // residents 65+ in the cell
   distAssetM: number | null; // metres to nearest critical asset
+  // Corroboration from external authoritative alerts (Phase 3 cont.). Optional
+  // so the pure scorer stays usable without them; both default to no effect.
+  officialWildfireAlert?: boolean; // GDACS wildfire alert active over the region
+  officialFireWeatherLevel?: number | null; // AEMET warning as [0,1] (amarillo/naranja/rojo)
 }
 
 export interface Weights {
@@ -52,6 +56,8 @@ function contributions(c: ScoreContext) {
   let fire_weather =
     c.fwi != null ? clamp01(c.fwi / 50) : c.triple30 ? 0.7 : 0.3;
   if (c.triple30) fire_weather = Math.max(fire_weather, 0.7);
+  // An official AEMET fire-weather warning raises the floor to its level.
+  if (c.officialFireWeatherLevel) fire_weather = Math.max(fire_weather, c.officialFireWeatherLevel);
 
   // Fuel × terrain: fuel dominates, slope (spread) modulates.
   const fuel = c.fuelType != null ? (FUEL_SCORE[c.fuelType] ?? 0.4) : 0.4;
@@ -75,6 +81,8 @@ export interface ScoreResult {
     contributions: Record<string, number>;
     weighted: Record<string, number>;
     lightningActive: boolean;
+    officialWildfireAlert: boolean;
+    officialFireWeatherLevel: number | null;
   };
 }
 
@@ -87,10 +95,12 @@ export function scoreDetection(c: ScoreContext, weights: Weights = DEFAULT_WEIGH
     score += contrib[k] * weights[k];
   }
 
-  // Confidence that this is a real active fire: evidence strength + ignition
-  // evidence (a lightning watch on the cell raises it).
+  // Confidence that this is a real active fire: evidence strength + corroboration.
+  // A lightning watch (likely ignition) OR an official wildfire alert on the
+  // region raises the corroboration term; neither leaves the prior behaviour.
+  const corroboration = Math.max(c.lightningActive ? 1 : 0.3, c.officialWildfireAlert ? 1 : 0);
   const confidence = clamp01(
-    0.4 * contrib.persistence + 0.4 * contrib.source_confidence + 0.2 * (c.lightningActive ? 1 : 0.3),
+    0.4 * contrib.persistence + 0.4 * contrib.source_confidence + 0.2 * corroboration,
   );
 
   const round = (v: number) => Math.round(v * 1000) / 1000;
@@ -102,6 +112,8 @@ export function scoreDetection(c: ScoreContext, weights: Weights = DEFAULT_WEIGH
       contributions: Object.fromEntries(Object.entries(contrib).map(([k, v]) => [k, round(v)])),
       weighted,
       lightningActive: c.lightningActive,
+      officialWildfireAlert: c.officialWildfireAlert ?? false,
+      officialFireWeatherLevel: c.officialFireWeatherLevel ?? null,
     },
   };
 }
