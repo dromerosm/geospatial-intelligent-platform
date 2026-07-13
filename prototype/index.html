@@ -554,16 +554,23 @@
               const prio = b?.priority || "medium";
               const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
               const actions = (b?.recommended_actions || []).map((a) => `<li>${esc(a)}</li>`).join("");
+              // Compact by default: the priority + briefing show; the longer
+              // actions + precision fold into a <details> the user can expand.
+              // Leaflet's maxHeight then adds a scroll wrapper so it never grows
+              // taller than the viewport.
+              const body = b
+                ? `<div>${esc(b.briefing_text)}</div>` +
+                  `<details style="margin-top:6px"><summary style="cursor:pointer;font-weight:600;font-size:12px">Acciones y precisión</summary>` +
+                  (actions ? `<ul style="margin:4px 0 0;padding-left:16px">${actions}</ul>` : "") +
+                  `<div style="color:#888;font-size:11px;margin-top:6px">${esc(b.source_precision_statement)}</div></details>`
+                : `<div style="color:#888">Sin briefing todavía (se genera en la próxima pasada del motor).</div>`;
               const popup =
-                `<div style="max-width:280px;font:13px/1.45 system-ui,sans-serif">` +
+                `<div style="font:13px/1.4 system-ui,sans-serif">` +
                 `<div style="font-weight:600;text-transform:uppercase;color:${PRIO[prio] || PRIO.medium}">${esc(prio)}</div>` +
-                `<div style="color:#666;font-size:11px;margin:2px 0 6px">${esc(e.h3_cell)} · score ${e.det_score} · conf ${e.det_confidence}</div>` +
-                (b ? `<div>${esc(b.briefing_text)}</div>` +
-                  (actions ? `<div style="font-weight:600;margin-top:6px">Acciones</div><ul style="margin:2px 0 0;padding-left:18px">${actions}</ul>` : "") +
-                  `<div style="color:#666;font-size:11px;margin-top:6px">${esc(b.source_precision_statement)}</div>`
-                  : `<div style="color:#666">Sin briefing todavía (se genera en la próxima pasada del motor).</div>`);
+                `<div style="color:#888;font-size:11px;margin:2px 0 6px">${esc(e.h3_cell)} · score ${e.det_score} · conf ${e.det_confidence}</div>` +
+                body + `</div>`;
               L.circleMarker(ll, { radius: 9, color: "#fff", weight: 1.5, fillColor: PRIO[prio] || PRIO.medium, fillOpacity: 0.9 })
-                .bindPopup(popup + "</div>")
+                .bindPopup(popup, { maxWidth: 300, minWidth: 220, maxHeight: 240 })
                 .addTo(eventsLayer);
               n++;
             }
