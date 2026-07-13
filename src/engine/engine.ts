@@ -15,10 +15,23 @@ import {
 import { weatherGrid } from "../ingest/weather.js";
 import { cellFor } from "../lib/h3.js";
 import type { Env } from "../types.js";
-import { DEFAULT_THRESHOLD, DEFAULT_WEIGHTS, scoreDetection } from "./score.js";
+import { DEFAULT_THRESHOLD, DEFAULT_WEIGHTS, scoreDetection, type Weights } from "./score.js";
 
 /** Detections within this window feed persistence/clustering. */
 const WINDOW_H = 24;
+
+/**
+ * Weights + confidence threshold, from KV `CONFIG` key `engine_config` (JSON),
+ * merged over the defaults. Tune live with:
+ *   wrangler kv key put --binding=CONFIG engine_config '{"threshold":0.6,"weights":{...}}'
+ */
+export async function loadEngineConfig(env: Env): Promise<{ weights: Weights; threshold: number }> {
+  const raw = (await env.CONFIG.get("engine_config", "json")) as { weights?: Partial<Weights>; threshold?: number } | null;
+  return {
+    weights: { ...DEFAULT_WEIGHTS, ...(raw?.weights ?? {}) },
+    threshold: typeof raw?.threshold === "number" ? raw.threshold : DEFAULT_THRESHOLD,
+  };
+}
 
 /** Nearest fire-weather sample cell to a detection cell (213-point grid). */
 function nearestWeatherCell(cell: string): string {
@@ -34,6 +47,7 @@ function nearestWeatherCell(cell: string): string {
 
 export async function runDecisionEngine(env: Env): Promise<{ clusters: number; events: number; subthreshold: number }> {
   const nowIso = new Date().toISOString();
+  const { weights, threshold } = await loadEngineConfig(env);
   const since = new Date(Date.now() - WINDOW_H * 3600_000).toISOString();
   const obs = await observationsSince(env, since);
 
@@ -63,11 +77,11 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
       popElderly: twin?.pop_elderly ?? null,
       distAssetM: twin?.dist_asset_m ?? null,
     };
-    const r = scoreDetection(ctx, DEFAULT_WEIGHTS);
+    const r = scoreDetection(ctx, weights);
     const obsIds = JSON.stringify(group.map((o) => o.id));
     const breakdown = JSON.stringify({ ...r.breakdown, context: ctx, municipio: twin?.municipio ?? null });
 
-    if (r.confidence >= DEFAULT_THRESHOLD) {
+    if (r.confidence >= threshold) {
       const existing = await activeEventByCell(env, cell);
       if (existing) await updateEvent(env, existing.id, { score: r.score, confidence: r.confidence, breakdown, obsIds });
       else await insertEvent(env, { id: crypto.randomUUID(), cell, score: r.score, confidence: r.confidence, breakdown, obsIds, at: nowIso });

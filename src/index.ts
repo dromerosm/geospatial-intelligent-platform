@@ -8,7 +8,7 @@
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
 import { ARAGON_BBOX, LIGHTNING_WATCH_HOURS } from "./config.js";
 import { activeEvents, activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
-import { runDecisionEngine } from "./engine/engine.js";
+import { loadEngineConfig, runDecisionEngine } from "./engine/engine.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
 import { assertFrame, decodeRayosGif, extractStrikes, fetchAemetRayosGif } from "./ingest/lightning-aemet.js";
 import { fetchFireWeather, weatherGrid } from "./ingest/weather.js";
@@ -276,6 +276,8 @@ export default {
         return json(await activeEvents(env));
       case "/dev/engine/run":
         return json(await runDecisionEngine(env));
+      case "/dev/engine/config":
+        return json(await loadEngineConfig(env));
       case "/dev/observe/test": {
         // Inject synthetic detection(s) to drive the engine (no live hotspots).
         const lat = Number(url.searchParams.get("lat") ?? "42.5");
