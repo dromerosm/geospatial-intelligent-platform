@@ -18,7 +18,7 @@ Production domain: **https://geospatial-platform.diegoromero.es**
 | Store | Observations, fire weather, events, audit | **D1** (SQLite) |
 | Twin | Precomputed per-cell context, keyed by **H3** | D1 (Phase 2) |
 | Decide | Explainable deterministic scoring — authoritative for events | Worker (Phase 3) |
-| Explain | Single LLM briefing, above threshold only | **OpenAI `gpt-5-mini`, direct** (Phase 4) |
+| Explain | Single LLM briefing, above threshold only | **Groq `gpt-oss-120b`, direct** (Phase 4) |
 | Operate | Map + REST + Telegram alerts | **Pages** + Worker (Phase 5) |
 
 No PostGIS: spatial joins are by **H3 cell key**; geometry math runs in the Worker
@@ -57,10 +57,10 @@ docs/             Architecture notes
 - **Deterministic engine** (every FIRMS pass): clusters detections by H3 cell, enriches with
   the Twin + nearest fire weather + lightning + official corroboration, scores explainably,
   and creates an event only above the confidence threshold (weights/threshold tunable in KV).
-- **AI briefing** (Phase 4): for each above-threshold event, one direct OpenAI `gpt-5-mini`
-  call produces a Spanish operational briefing + structured JSON (priority, conflicting
-  evidence, actions, source-precision statement). Explains, never detects — see
-  [`docs/ai-briefing.md`](docs/ai-briefing.md).
+- **AI briefing** (Phase 4): for each above-threshold event, one direct LLM call (Groq
+  `gpt-oss-120b`, ~1.5 s; provider-swappable) produces a Spanish operational briefing +
+  structured JSON (priority, conflicting evidence, actions, source-precision statement).
+  Explains, never detects — see [`docs/ai-briefing.md`](docs/ai-briefing.md).
 - Read API: `GET /health`, `/observations`, `/fire-weather`, `/digital-twin[?cell=<h3>]`, `/lightning`, `/alerts`, `/events` (with the AI briefing).
 - Every ingestion writes an `audit_log` row.
 
@@ -84,7 +84,8 @@ npm run db:apply:remote      # add --local for the local dev DB
 cp .dev.vars.example .dev.vars    # put your FIRMS_MAP_KEY here for local dev
 npx wrangler secret put FIRMS_MAP_KEY   # for production
 npx wrangler secret put AEMET_API_KEY   # lightning + avisos feeds
-npx wrangler secret put OPENAI_API_KEY  # Phase 4 AI briefing (optional: unset = no briefings)
+npx wrangler secret put GROQ_API_KEY    # Phase 4 AI briefing (active provider; optional)
+# npx wrangler secret put OPENAI_API_KEY # only if AI_PROVIDER="openai" in src/config.ts
 ```
 
 ## Develop & deploy

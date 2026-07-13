@@ -1,7 +1,7 @@
 # AI briefing agent (Phase 4 — "Explain")
 
 The reasoning layer. For every event the deterministic engine creates (confidence ≥
-threshold), a **single OpenAI call** turns the evidence into a plain-language Spanish
+threshold), a **single LLM call** turns the evidence into a plain-language Spanish
 briefing + structured JSON for operators. Code: [`src/ai/briefing.ts`](../src/ai/briefing.ts),
 wired from [`src/engine/engine.ts`](../src/engine/engine.ts).
 
@@ -16,15 +16,21 @@ the master document — never imply finer precision than the source).
 
 ## Transport & model
 
-- **Direct to OpenAI** (`https://api.openai.com/v1/chat/completions`) — no AI Gateway, no
-  extra moving parts or cost. The reasoning layer stays provider-agnostic: swapping
-  provider means editing only [`src/config.ts`](../src/config.ts) + `briefing.ts`.
-- Model **`gpt-5-mini`**, **Structured Outputs** (`response_format` json_schema, strict).
-- **Reasoning is off (`reasoning_effort: "minimal"`) for now.** High reasoning added ~50 s
-  of latency per call for little operational gain — the engine already did the analysis, so
-  the model only needs to phrase it well. A stronger, explicit prompt (priority rubric +
-  per-field guidance) carries the load instead. Bump the effort in `config.ts` later if
-  briefings need deeper synthesis. With minimal reasoning a call returns in a few seconds.
+- **Direct call, no AI Gateway** — no extra moving parts or cost. Both providers below
+  expose an OpenAI-compatible endpoint + strict Structured Outputs, so the layer is
+  provider-swappable via the single `AI_PROVIDER` flag in
+  [`src/config.ts`](../src/config.ts); the rest of `briefing.ts` is unchanged.
+- **Active provider: Groq `gpt-oss-120b`** (`https://api.groq.com/openai/v1/...`),
+  `reasoning_effort: "low"`. Fallback: OpenAI `gpt-5-mini` (`reasoning_effort: "minimal"`).
+  Structured Outputs (`response_format` json_schema, strict) on both.
+- **Why Groq (validated 2026-07-13).** Head-to-head on the same prompt + schema: Groq
+  `gpt-oss-120b` median **~1.5 s** vs OpenAI `gpt-5-mini` **~7 s** (and far tighter latency
+  variance), at equal or better structured quality — Groq reliably populates
+  `conflicting_evidence`, which gpt-5-mini often left empty. Only Groq's `gpt-oss-*` models
+  support strict `json_schema` (llama-3.3 / qwen3 return 400).
+- **Reasoning stays low/minimal on purpose.** The engine already did the analysis, so the
+  model only needs to phrase it well; an explicit prompt (priority rubric + per-field
+  guidance) carries the load. Bump the effort in `config.ts` if briefings need deeper synthesis.
 
 ## Structured output
 
@@ -53,12 +59,13 @@ priority; popup shows the briefing + precision statement).
 - **Best-effort & self-healing.** The event is deterministic and already persisted; a
   failed/timed-out call just leaves the briefing null and is audited (`stage='ai'`). Because
   the engine only briefs events lacking one, the **next pass retries** automatically.
-- If `OPENAI_API_KEY` is unset the engine still runs and simply skips briefings.
+- If the active provider's key is unset the engine still runs and simply skips briefings.
 
 ## Config & secret
 
-`OPENAI_API_KEY` — set locally in `.dev.vars`, in prod via
-`wrangler secret put OPENAI_API_KEY`. Model / effort / timeout live in `src/config.ts`.
+Secret is the active provider's key — **`GROQ_API_KEY`** by default (OpenAI path uses
+`OPENAI_API_KEY`). Set locally in `.dev.vars`, in prod via `wrangler secret put GROQ_API_KEY`.
+Provider / model / effort / timeout live in `src/config.ts` (`AI_PROVIDER`).
 
 ## Testing
 

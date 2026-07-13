@@ -28,7 +28,7 @@ flowchart TB
   SRC --> BLD["Build Digital Twin · H3"]
   BLD --> D1
   D1 --> DET["Deterministic engine<br/>explainable scoring<br/>+ official corroboration"]
-  DET -->|"≥ threshold"| AIG["AI reasoning<br/>OpenAI gpt-5-mini"]
+  DET -->|"≥ threshold"| AIG["AI reasoning<br/>Groq gpt-oss-120b"]
   DET -->|"< threshold"| AUD["Audit log"]
   AIG --> BR["Operational briefing"]
   BR --> OPS["Map · API · Telegram"]

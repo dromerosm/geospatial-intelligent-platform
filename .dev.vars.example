@@ -7,9 +7,11 @@ FIRMS_MAP_KEY=""
 # AEMET OpenData key (lightning + avisos CAP feeds): https://opendata.aemet.es/
 AEMET_API_KEY=""
 
-# OpenAI key — AI briefing agent (Phase 4). Called directly (no AI Gateway).
-# Optional: if unset, the engine runs and simply skips briefings.
-OPENAI_API_KEY=""
+# AI briefing agent (Phase 4). Called directly (no AI Gateway). Provider chosen by
+# AI_PROVIDER in src/config.ts; set the active provider's key. Optional: if unset,
+# the engine runs and simply skips briefings.
+GROQ_API_KEY=""     # active provider (Groq gpt-oss-120b)
+OPENAI_API_KEY=""   # fallback (only if AI_PROVIDER="openai")
 
 # --- Reserved for later phases ---
 # Telegram bot token for operational alerts (Phase 5)

@@ -8,7 +8,7 @@
 // is here. Kept deliberately simple: cluster by exact cell (k-ring merge is a
 // documented refinement), one active event per cell.
 import { cellToLatLng } from "h3-js";
-import { generateBriefing, type BriefingInput } from "../ai/briefing.js";
+import { aiApiKey, generateBriefing, type BriefingInput } from "../ai/briefing.js";
 import {
   activeEventByCell, activeWildfireAlert, digitalTwinCell, fireWeatherCell, hasActiveLightningWatch,
   insertEvent, observationsSince, officialFireWeatherLevel, updateEvent, updateEventBriefing, writeAudit,
@@ -21,14 +21,15 @@ import { DEFAULT_THRESHOLD, DEFAULT_WEIGHTS, scoreDetection, type ScoreResult, t
 type ObsRow = Awaited<ReturnType<typeof observationsSince>>[number];
 
 // Best-effort AI briefing for one event. Called at most once per event (only
-// when it has none yet) and only if OPENAI_API_KEY is set. The deterministic
+// when it has none yet) and only if the active provider's key is set. The deterministic
 // event already exists; a failure here just leaves the briefing null and is
 // audited — it never interrupts the engine.
 async function briefEvent(
   env: Env, eventId: string, cell: string, threshold: number,
   r: ScoreResult, ctx: BriefingInput["context"], municipio: string | null, group: ObsRow[],
 ): Promise<void> {
-  if (!env.OPENAI_API_KEY) return;
+  const apiKey = aiApiKey(env);
+  if (!apiKey) return;
   const input: BriefingInput = {
     cell, municipio, score: r.score, confidence: r.confidence, threshold,
     contributions: r.breakdown.contributions, weighted: r.breakdown.weighted, context: ctx,
@@ -38,7 +39,7 @@ async function briefEvent(
     })),
   };
   try {
-    const brief = await generateBriefing(env.OPENAI_API_KEY, input);
+    const brief = await generateBriefing(apiKey, input);
     await updateEventBriefing(env, eventId, JSON.stringify(brief.json), brief.json.briefing_text);
     await writeAudit(env, "ai", { eventId, cell, model: brief.model, priority: brief.json.priority, usage: brief.usage });
   } catch (err) {

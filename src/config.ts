@@ -60,19 +60,30 @@ export const AEMET_AVISOS_URL = (area: string, key: string) =>
 export const AEMET_FIRE_PHENOMENA = ["AT", "VI", "TO"] as const; // heat, wind, thunderstorm
 
 // --- AI briefing agent (Phase 4) --------------------------------------------
-// A single OpenAI call turns an above-threshold event into a plain-language
+// A single LLM call turns an above-threshold event into a plain-language
 // operational briefing + structured JSON. Called DIRECTLY (no AI Gateway) to
-// avoid extra moving parts. The reasoning layer is provider-agnostic: swapping
-// providers means editing only this block + src/ai/briefing.ts.
-export const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-export const OPENAI_MODEL = "gpt-5-mini";
-// Reasoning is OFF for now ("minimal"): high reasoning added ~50 s of latency per
-// call for little operational gain here — the deterministic engine already did the
-// analysis, so the model only needs to phrase it. A stronger, explicit prompt
-// carries the load instead (see src/ai/briefing.ts). Bump this to "low"/"medium"/
-// "high" later if briefings need deeper synthesis.
-export const OPENAI_REASONING_EFFORT = "minimal";
-// Bound the call so a cron pass can't hang. With minimal reasoning a call returns
-// in a few seconds; keep headroom. If it aborts, the briefing stays null and the
-// next engine pass retries it (self-healing — the engine only briefs events with none).
-export const OPENAI_TIMEOUT_MS = 30_000;
+// avoid extra moving parts. The reasoning layer is provider-agnostic: both Groq
+// and OpenAI expose an OpenAI-compatible endpoint + strict Structured Outputs,
+// so swapping providers means flipping AI_PROVIDER only.
+//
+// Provider: GROQ by default. Validated 2026-07-13 that Groq `gpt-oss-120b` is
+// ~5× faster than OpenAI `gpt-5-mini` (median ~1.5 s vs ~7 s), with much tighter
+// latency variance and equal/better structured quality. Flip to "openai" to revert.
+export const AI_PROVIDER: "groq" | "openai" = "groq";
+
+const AI_ENDPOINTS = {
+  groq: { url: "https://api.groq.com/openai/v1/chat/completions", model: "openai/gpt-oss-120b", effort: "low" },
+  openai: { url: "https://api.openai.com/v1/chat/completions", model: "gpt-5-mini", effort: "minimal" },
+} as const;
+
+export const AI_URL = AI_ENDPOINTS[AI_PROVIDER].url;
+export const AI_MODEL = AI_ENDPOINTS[AI_PROVIDER].model;
+// Reasoning stays low/minimal on purpose: the deterministic engine already did the
+// analysis, so the model only needs to phrase it well. A stronger, explicit prompt
+// carries the load (see src/ai/briefing.ts). Bump the effort if briefings need
+// deeper synthesis (costs latency).
+export const AI_REASONING_EFFORT = AI_ENDPOINTS[AI_PROVIDER].effort;
+// Bound the call so a cron pass can't hang. A call returns in a few seconds; keep
+// headroom. If it aborts, the briefing stays null and the next engine pass retries
+// it (self-healing — the engine only briefs events with none).
+export const AI_TIMEOUT_MS = 30_000;

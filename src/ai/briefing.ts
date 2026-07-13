@@ -10,7 +10,13 @@
 // the prompt tells the model to never invent detections, coordinates or agency
 // alerts. If the call fails or the key is unset, the event still stands with a
 // null briefing (best-effort layer).
-import { OPENAI_MODEL, OPENAI_REASONING_EFFORT, OPENAI_TIMEOUT_MS, OPENAI_URL } from "../config.js";
+import { AI_MODEL, AI_PROVIDER, AI_REASONING_EFFORT, AI_TIMEOUT_MS, AI_URL } from "../config.js";
+import type { Env } from "../types.js";
+
+/** Key for the active provider (config.ts). undefined -> engine skips briefings. */
+export function aiApiKey(env: Env): string | undefined {
+  return AI_PROVIDER === "groq" ? env.GROQ_API_KEY : env.OPENAI_API_KEY;
+}
 
 /** One observation's precision facts (never claim finer than the source). */
 export interface BriefingObservation {
@@ -143,15 +149,15 @@ function buildUserPrompt(i: BriefingInput): string {
  */
 export async function generateBriefing(apiKey: string, input: BriefingInput): Promise<BriefingResult> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), OPENAI_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
   try {
-    const res = await fetch(OPENAI_URL, {
+    const res = await fetch(AI_URL, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       signal: ctrl.signal,
       body: JSON.stringify({
-        model: OPENAI_MODEL,
-        reasoning_effort: OPENAI_REASONING_EFFORT,
+        model: AI_MODEL,
+        reasoning_effort: AI_REASONING_EFFORT,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: buildUserPrompt(input) },
@@ -163,7 +169,7 @@ export async function generateBriefing(apiKey: string, input: BriefingInput): Pr
     const body = await res.json<any>();
     const content = body?.choices?.[0]?.message?.content;
     if (!content) throw new Error("OpenAI returned no content");
-    return { json: JSON.parse(content), usage: body.usage ?? null, model: body.model ?? OPENAI_MODEL };
+    return { json: JSON.parse(content), usage: body.usage ?? null, model: body.model ?? AI_MODEL };
   } finally {
     clearTimeout(timer);
   }
