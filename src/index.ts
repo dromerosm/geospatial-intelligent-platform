@@ -6,7 +6,7 @@
 //
 // Phase 1 writes straight to D1/R2. The Queue from the blueprint is introduced
 // in Phase 3, when processing (scoring + AI) becomes heavy enough to decouple.
-import { ARAGON_BBOX, LIGHTNING_WATCH_HOURS } from "./config.js";
+import { ARAGON_BBOX, FIRMS_SOURCES, LIGHTNING_WATCH_HOURS } from "./config.js";
 import { activeEvents, activeLightningWatches, currentFireWeather, digitalTwinCell, digitalTwinStats, fireWeatherCell, fireWeatherForFwi, insertObservations, pruneFireWeather, pruneLightningWatch, recentObservations, recordLightningStrikes, updateFwi, upsertFireWeather, writeAudit } from "./db.js";
 import { loadEngineConfig, runDecisionEngine } from "./engine/engine.js";
 import { fetchFirmsCsv, parseFirmsCsv } from "./ingest/firms.js";
@@ -19,16 +19,28 @@ import LANDING from "./landing.html";
 
 async function runFirms(env: Env): Promise<void> {
   const now = new Date().toISOString();
-  const csv = await fetchFirmsCsv(env.FIRMS_MAP_KEY);
-  const rawKey = `firms/${now}.csv`;
-  await env.RAW.put(rawKey, csv); // archive raw payload for replay/audit
-  const obs = parseFirmsCsv(csv, now, rawKey);
-  const written = await insertObservations(env, obs);
-  await writeAudit(env, "ingest", { feed: "FIRMS_VIIRS", detections: obs.length, written, rawKey });
+  const all: Observation[] = [];
+  const perSource: Record<string, number> = {};
+  // One satellite misses fires others see; pull every source, tolerate failures.
+  for (const src of FIRMS_SOURCES) {
+    try {
+      const csv = await fetchFirmsCsv(env.FIRMS_MAP_KEY, src.id);
+      const rawKey = `firms/${src.sat}/${now}.csv`;
+      await env.RAW.put(rawKey, csv); // archive raw payload for replay/audit
+      const obs = parseFirmsCsv(csv, src, now, rawKey);
+      all.push(...obs);
+      perSource[src.sat] = obs.length;
+    } catch (err) {
+      perSource[src.sat] = -1; // failed; keep the other sources
+      console.error(`FIRMS ${src.id} failed:`, err);
+    }
+  }
+  const written = await insertObservations(env, all); // deterministic ids dedup re-fetches
+  await writeAudit(env, "ingest", { feed: "FIRMS", perSource, detections: all.length, written });
   // Run the deterministic engine over the recent detection window (authoritative
   // event creation). Cheap and idempotent, so run every FIRMS pass.
   const eng = await runDecisionEngine(env);
-  console.log(`FIRMS: ${obs.length} detections, ${written} stored; engine ${JSON.stringify(eng)}`);
+  console.log(`FIRMS: ${all.length} detections ${JSON.stringify(perSource)}, ${written} stored; engine ${JSON.stringify(eng)}`);
 }
 
 async function runWeather(env: Env): Promise<void> {

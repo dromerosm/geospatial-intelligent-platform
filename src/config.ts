@@ -14,10 +14,18 @@ export const H3_RESOLUTION = 7;
 
 // --- NASA FIRMS -------------------------------------------------------------
 // Area API: https://firms.modaps.eosdis.nasa.gov/api/area/
-export const FIRMS_SOURCE = "VIIRS_SNPP_NRT";
+// Ingest ALL available near-real-time constellations, not just one satellite: a
+// single platform (e.g. Suomi-NPP) misses fires that NOAA-20/21 or MODIS see on
+// a different overpass. Cross-satellite hits in the same cell also raise the
+// engine's persistence/confidence. res = nominal pixel size (m).
+export const FIRMS_SOURCES = [
+  { id: "VIIRS_SNPP_NRT", sat: "SNPP", resM: 375 },
+  { id: "VIIRS_NOAA20_NRT", sat: "NOAA20", resM: 375 },
+  { id: "VIIRS_NOAA21_NRT", sat: "NOAA21", resM: 375 },
+  { id: "MODIS_NRT", sat: "MODIS", resM: 1000 },
+] as const;
 export const FIRMS_DAY_RANGE = 1; // last N days
-export const FIRMS_NOMINAL_RESOLUTION_M = 375; // VIIRS I-band pixel
-/** VIIRS confidence letters -> numeric [0,1]. */
+/** VIIRS confidence letters -> numeric [0,1] (MODIS uses a 0-100 number). */
 export const FIRMS_CONFIDENCE: Record<string, number> = { l: 0.3, n: 0.6, h: 0.9 };
 
 // --- Fire weather -----------------------------------------------------------
