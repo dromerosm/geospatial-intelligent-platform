@@ -100,10 +100,38 @@
 
     a { color: #7fb3ff; }
     .leaflet-div-icon.wind-arrow { background: transparent; border: none; }
+
+    /* The control panel is always open on wide screens, so the toggle is hidden. */
+    #panel-toggle { display: none; }
+
+    /* Small screens: the 320px panel would cover the map, so collapse it behind a
+       button and let it span the width when opened. */
+    @media (max-width: 640px) {
+      #panel-toggle {
+        display: inline-flex; align-items: center; gap: 6px;
+        position: absolute; top: 14px; left: 14px; z-index: 600;
+        background: var(--panel); color: var(--text);
+        border: 1px solid var(--border); border-radius: 10px;
+        padding: 9px 13px; cursor: pointer;
+        font: 600 13px/1 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        backdrop-filter: blur(6px);
+      }
+      #panel-toggle:hover { border-color: var(--muted); }
+      #title {
+        display: none;
+        top: 62px; left: 14px; right: 14px; max-width: none;
+        max-height: calc(100dvh - 76px);
+      }
+      #title.open { display: block; }
+      /* Keep the hover/tap info card from colliding with the toggle. */
+      #info { top: 62px; }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+
+  <button id="panel-toggle" type="button" aria-controls="title" aria-expanded="false">☰ Capas</button>
 
   <div id="title" class="panel">
     <a class="home" href="https://geospatial-platform.diegoromero.es/">‹ Volver a la landing</a>
@@ -240,6 +268,16 @@
     const map = L.map("map", { preferCanvas: true, zoomControl: false }).setView([41.3, -0.9], 8);
     L.control.zoom({ position: "bottomright" }).addTo(map);
     window.addEventListener("resize", () => map.invalidateSize());
+
+    // Small screens: the control panel starts collapsed behind a button (CSS media
+    // query). It's an overlay, so opening it doesn't resize the map.
+    const panelToggle = document.getElementById("panel-toggle");
+    const titlePanel = document.getElementById("title");
+    panelToggle.addEventListener("click", () => {
+      const open = titlePanel.classList.toggle("open");
+      panelToggle.setAttribute("aria-expanded", String(open));
+      panelToggle.textContent = open ? "✕ Cerrar" : "☰ Capas";
+    });
 
     // --- Basemaps + NASA GIBS satellite layers --------------------------------
     // GIBS daily reflectance lags an amount that VARIES (right now even 2 days
