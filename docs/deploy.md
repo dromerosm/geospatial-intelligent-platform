@@ -77,8 +77,41 @@ curl -s "https://geospatial-platform.diegoromero.es/digital-twin?cell=<h3>"  # o
 
 ```bash
 printf '%s' "<value>" | npx wrangler secret put FIRMS_MAP_KEY
-# future phases: OPENAI_API_KEY, TELEGRAM_BOT_TOKEN
+# others: AEMET_API_KEY, GROQ_API_KEY / OPENAI_API_KEY,
+#         TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DEV_TOKEN
 ```
+
+## Dev / manual-trigger endpoints (gated)
+
+The `/dev/*` routes manually fire the ingest/engine/notify jobs that normally run on
+cron. They **mutate D1 and spend paid quota** (external feeds, the LLM briefing, the
+Telegram ops chat), so they are gated by a shared secret and must never be open on the
+public deployment:
+
+- **`DEV_TOKEN` unset** → every `/dev/*` route returns `404 {"error":"not found"}`
+  (the routes are invisible — the default and safe state in production).
+- **`DEV_TOKEN` set** → callers must send a matching `X-Dev-Token` header; any mismatch
+  or missing header also gets `404` (never `401`, so the routes stay unadvertised).
+
+The guard lives in `src/index.ts`, ahead of the rate limiter. To enable the endpoints
+in production:
+
+```bash
+# use a long random value, e.g. `openssl rand -hex 32`
+printf '%s' "<random-token>" | npx wrangler secret put DEV_TOKEN
+npm run deploy                       # gating changes take effect only on redeploy
+```
+
+Then call any dev route with the header:
+
+```bash
+BASE=https://geospatial-platform.diegoromero.es
+curl -s -H "X-Dev-Token: $DEV_TOKEN" $BASE/dev/ingest/firms      # {"ran":"firms"}
+curl -s -H "X-Dev-Token: $DEV_TOKEN" $BASE/dev/engine/run
+```
+
+Locally (`wrangler dev`), `DEV_TOKEN` comes from `.dev.vars`; leave it set there so the
+smoke test below works against localhost too.
 
 ## Post-deploy verification (smoke test)
 
@@ -86,8 +119,10 @@ printf '%s' "<value>" | npx wrangler secret put FIRMS_MAP_KEY
 BASE=https://geospatial-platform.diegoromero.es
 
 curl -s $BASE/health                 # {"ok":true,...}
-curl -s $BASE/dev/ingest/weather     # {"ran":"weather"}
-curl -s $BASE/dev/ingest/firms       # {"ran":"firms"}
+# /dev/* are gated (see above): pass the token, or they 404. Skip these two if
+# DEV_TOKEN is not set in prod — cron drives ingestion anyway.
+curl -s -H "X-Dev-Token: $DEV_TOKEN" $BASE/dev/ingest/weather   # {"ran":"weather"}
+curl -s -H "X-Dev-Token: $DEV_TOKEN" $BASE/dev/ingest/firms     # {"ran":"firms"}
 curl -s $BASE/fire-weather | head    # 9 cells with data
 curl -s $BASE/observations           # hotspots (may be [] if no active fires)
 ```
