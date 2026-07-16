@@ -119,3 +119,21 @@ describe("scoreDetection — confidence & corroboration gate", () => {
     expect(r.score).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("scoreDetection — exposure (people & assets at risk)", () => {
+  const exposure = (c: ScoreContext) => scoreDetection(c).breakdown.contributions.exposure;
+
+  it("rises with population density", () => {
+    expect(exposure({ ...neutral, populationDensity: 800 })).toBeGreaterThan(exposure(neutral));
+  });
+
+  it("rises with more vulnerable (65+) residents", () => {
+    expect(exposure({ ...neutral, popElderly: 200 })).toBeGreaterThan(exposure({ ...neutral, popElderly: 0 }));
+  });
+
+  it("rises as a critical asset gets closer", () => {
+    const near = exposure({ ...neutral, distAssetM: 0 });
+    const far = exposure({ ...neutral, distAssetM: 20000 });
+    expect(near).toBeGreaterThan(far);
+  });
+});

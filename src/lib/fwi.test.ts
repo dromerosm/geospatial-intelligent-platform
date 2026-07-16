@@ -65,3 +65,18 @@ describe("computeFwi — physical invariants", () => {
     expect(Number.isFinite(o.ffmc)).toBe(true);
   });
 });
+
+describe("computeFwi — rainfall wetting of the moisture codes", () => {
+  // Heavy rain over elevated antecedent codes exercises all three rain-recovery
+  // branches (FFMC ro>0.5, DMC ro>1.5, DC ro>2.8). Every code must drop.
+  const dry: FwiInput = { temp: 22, rh: 45, wind: 12, month: 7, ffmc0: 92, dmc0: 120, dc0: 450, rain: 0 };
+
+  it("heavy rain lowers FFMC, DMC and DC versus an identical dry day", () => {
+    const noRain = computeFwi(dry);
+    const wet = computeFwi({ ...dry, rain: 25 });
+    expect(wet.ffmc).toBeLessThan(noRain.ffmc);
+    expect(wet.dmc).toBeLessThan(noRain.dmc);
+    expect(wet.dc).toBeLessThan(noRain.dc);
+    for (const v of Object.values(wet)) expect(v).toBeGreaterThanOrEqual(0);
+  });
+});
