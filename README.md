@@ -18,8 +18,9 @@ Production domain: **https://geospatial-platform.diegoromero.es**
 ## Demo
 
 The interactive Digital Twin of Aragón — cycling the per-cell layers (population
-density, share of residents 65+, fuel, temperature, **fire-weather hazard / FWI**) and
-finishing with the live **AI events** and **FIRMS hotspots** overlaid on the hazard map.
+density, share of residents 65+, fuel, temperature, **fire-weather hazard / FWI**), then
+switching to the **near-real-time Meteosat (MTG) satellite base** and overlaying the live
+**AI events** and **FIRMS hotspots**.
 
 ![Interactive map demo — Digital Twin layers, fire-weather hazard, and live AI events for Aragón](docs/media/map-demo.gif)
 
@@ -147,5 +148,10 @@ Durable Objects, MTG/Copernicus, Vectorize RAG. See the
 
 ## License
 
-[MIT](LICENSE) © Diego Romero. Data feeds (NASA FIRMS, Open-Meteo, AEMET, GDACS,
-Copernicus/EFFIS, INE) are covered by their own licenses and terms of use.
+[MIT](LICENSE) © Diego Romero. Data feeds and basemap imagery are covered by their own
+licenses and terms of use, and are attributed in-app:
+
+- **Feeds:** NASA FIRMS, Open-Meteo, AEMET, GDACS, Copernicus/EFFIS, INE.
+- **Satellite basemaps:** NASA EOSDIS GIBS (VIIRS/MODIS daily true colour), **EUMETSAT ·
+  Meteosat MTG** (near-real-time *Geo Colour* via the public EUMETView WMS — © EUMETSAT).
+- **Base map:** © OpenStreetMap contributors · © CARTO.
