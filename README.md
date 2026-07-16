@@ -15,6 +15,16 @@ and — only above a confidence threshold — generates an operational briefing 
 
 Production domain: **https://geospatial-platform.diegoromero.es**
 
+## Demo
+
+The interactive Digital Twin of Aragón — cycling the per-cell layers (population
+density, share of residents 65+, fuel, temperature, **fire-weather hazard / FWI**) and
+finishing with the live **AI events** and **FIRMS hotspots** overlaid on the hazard map.
+
+![Interactive map demo — Digital Twin layers, fire-weather hazard, and live AI events for Aragón](docs/media/map-demo.gif)
+
+▶ Try it live: **[/mapa](https://geospatial-platform.diegoromero.es/mapa)** · API docs: **[/docs](https://geospatial-platform.diegoromero.es/docs)**
+
 ## Architecture (one line per layer)
 
 | Layer | What | Cloudflare primitive |
