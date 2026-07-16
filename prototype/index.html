@@ -348,10 +348,13 @@
     // (VIIRS SNPP → VIIRS NOAA-20 → MODIS Terra) so a day missing from one is
     // filled by the next. The first (date, sensor) with tiles wins and is applied
     // in place (setUrl re-fetches, so this self-heals even if the base is shown).
-    const TRUECOLOR = [
-      ["VIIRS_SNPP_CorrectedReflectance_TrueColor", "VIIRS SNPP"],
-      ["VIIRS_NOAA20_CorrectedReflectance_TrueColor", "VIIRS NOAA-20"],
-      ["MODIS_Terra_CorrectedReflectance_TrueColor", "MODIS Terra"],
+    // Each true-colour product is paired with the SAME sensor's false-colour
+    // product, so both bases resolve to a date that sensor actually has (SNPP
+    // true & false colour can lag ~7 days while NOAA-20/MODIS are current).
+    const SENSORS = [
+      { tc: "VIIRS_SNPP_CorrectedReflectance_TrueColor",   fc: "VIIRS_SNPP_CorrectedReflectance_BandsM11-I2-I1",  label: "VIIRS SNPP" },
+      { tc: "VIIRS_NOAA20_CorrectedReflectance_TrueColor", fc: "VIIRS_NOAA20_CorrectedReflectance_BandsM11-I2-I1", label: "VIIRS NOAA-20" },
+      { tc: "MODIS_Terra_CorrectedReflectance_TrueColor",  fc: "MODIS_Terra_CorrectedReflectance_Bands721",       label: "MODIS Terra" },
     ];
     const PROBE_TILE = "3/4/2"; // a zoom-3 tile over Europe/N-Atlantic that GIBS fills
 
@@ -364,20 +367,18 @@
       gibsProbed = true;
       for (let back = 1; back <= 16; back++) {
         const d = new Date(Date.now() - back * 864e5).toISOString().slice(0, 10);
-        for (const [id, sensor] of TRUECOLOR) {
-          const probe = gibsWmtsUrl(id, "GoogleMapsCompatible_Level9", "jpg", d).replace("{z}/{y}/{x}", PROBE_TILE);
+        for (const s of SENSORS) {
+          const probe = gibsWmtsUrl(s.tc, "GoogleMapsCompatible_Level9", "jpg", d).replace("{z}/{y}/{x}", PROBE_TILE);
           const ready = await fetch(probe).then((r) => r.ok).catch(() => false);
           if (!ready) continue;
           GIBS_DATE = d;
-          // Point the satellite base at the winning sensor + date.
-          const sat = BASES.satelite.layer;
-          sat._gibs.id = id;
-          sat.setUrl(gibsWmtsUrl(id, sat._gibs.matrix, sat._gibs.ext, d));
-          // False colour + fire overlays follow the same date (best effort).
-          BASES.falso.layer.setUrl(gibsWmtsUrl(BASES.falso.layer._gibs.id, BASES.falso.layer._gibs.matrix, BASES.falso.layer._gibs.ext, d));
+          // Point BOTH the true-colour and false-colour bases at this sensor + date.
+          const sat = BASES.satelite.layer, fal = BASES.falso.layer;
+          sat._gibs.id = s.tc; sat.setUrl(gibsWmtsUrl(s.tc, sat._gibs.matrix, sat._gibs.ext, d));
+          fal._gibs.id = s.fc; fal.setUrl(gibsWmtsUrl(s.fc, fal._gibs.matrix, fal._gibs.ext, d));
           Object.values(OVERLAYS).forEach((o) => o.layer.setParams({ time: d }));
-          BASES.satelite.note = `Satélite: ${sensor} · ${d}`;
-          BASES.falso.note = `Falso color: VIIRS SNPP · ${d}`;
+          BASES.satelite.note = `Satélite: ${s.label} · ${d}`;
+          BASES.falso.note = `Falso color: ${s.label} · ${d}`;
           refreshSatNote();
           return;
         }
