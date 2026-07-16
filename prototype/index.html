@@ -355,7 +355,13 @@
     ];
     const PROBE_TILE = "3/4/2"; // a zoom-3 tile over Europe/N-Atlantic that GIBS fills
 
-    (async () => {
+    // Runs at most once, and only when a GIBS-backed layer is actually requested,
+    // so the default load (dark base) makes no exploratory tile requests (the
+    // probe's misses would otherwise log 404s to the console).
+    let gibsProbed = false;
+    async function ensureGibsDate() {
+      if (gibsProbed) return;
+      gibsProbed = true;
       for (let back = 1; back <= 16; back++) {
         const d = new Date(Date.now() - back * 864e5).toISOString().slice(0, 10);
         for (const [id, sensor] of TRUECOLOR) {
@@ -378,11 +384,12 @@
       }
       BASES.satelite.note = "Satélite: imagen VIIRS no disponible (GIBS)";
       refreshSatNote();
-    })();
+    }
 
     // Base selector (radio).
     const baseSeg = document.getElementById("base-seg");
     function selectBase(key, btn) {
+      if (key === "satelite" || key === "falso") ensureGibsDate(); // lazy GIBS date probe
       const next = BASES[key].layer;
       if (next !== activeBase) { map.removeLayer(activeBase); next.addTo(map); activeBase = next; }
       [...baseSeg.children].forEach((b) => b.classList.toggle("active", b === btn));
@@ -403,7 +410,7 @@
       b.textContent = ov.label;
       b.onclick = () => {
         const on = map.hasLayer(ov.layer);
-        if (on) map.removeLayer(ov.layer); else ov.layer.addTo(map);
+        if (on) map.removeLayer(ov.layer); else { ensureGibsDate(); ov.layer.addTo(map); }
         b.classList.toggle("active", !on);
       };
       ovSeg.appendChild(b);
