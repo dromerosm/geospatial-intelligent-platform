@@ -20,6 +20,10 @@ export interface Env {
   // engine still runs and simply skips notifications.
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  // Shared secret guarding the /dev/* manual-trigger endpoints (they mutate state
+  // and spend paid quota). When unset, /dev/* is disabled entirely; when set,
+  // callers must send a matching `X-Dev-Token` header. See src/index.ts.
+  DEV_TOKEN?: string;
 }
 
 /**

@@ -7,6 +7,8 @@ dist/
 
 # Generated build artifacts (Digital Twin SQL, etc.)
 tmp/
+# Local source datasets pulled for offline twin/grid builds (ERA5, etc.)
+data/
 # prototype/data/aragon-density.geojson is generated but committed — it is the
 # static dataset the Cloudflare Pages map serves (regenerate: node prototype/build-geojson.mjs).
 

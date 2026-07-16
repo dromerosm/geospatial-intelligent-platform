@@ -17,3 +17,9 @@ OPENAI_API_KEY=""   # fallback (only if AI_PROVIDER="openai")
 # skipped. Get the chat id from getUpdates (see docs/telegram-alerts.md).
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
+
+# Guards the /dev/* manual-trigger endpoints (ingest/engine/notify test, etc.),
+# which mutate D1 and spend paid quota. If unset, /dev/* is disabled (404). If
+# set, callers must send a matching `X-Dev-Token` header. Use a long random value
+# in production: `wrangler secret put DEV_TOKEN`.
+DEV_TOKEN=""

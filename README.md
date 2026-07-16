@@ -95,14 +95,21 @@ npx wrangler secret put GROQ_API_KEY    # Phase 4 AI briefing (active provider; 
 # npx wrangler secret put OPENAI_API_KEY # only if AI_PROVIDER="openai" in src/config.ts
 npx wrangler secret put TELEGRAM_BOT_TOKEN # Phase 5 alerts (optional)
 npx wrangler secret put TELEGRAM_CHAT_ID   # Phase 5 alerts target chat
+npx wrangler secret put DEV_TOKEN          # guards the /dev/* manual triggers (see below)
 ```
+
+The `/dev/*` endpoints (manual ingest/engine/notify triggers) mutate D1 and spend
+paid quota, so they are gated: disabled (404) unless `DEV_TOKEN` is set, and then a
+matching `X-Dev-Token` header is required. Leave `DEV_TOKEN` unset in production if
+you never call them.
 
 ## Develop & deploy
 
 ```bash
 npm run dev            # local Worker; visit /health
-# trigger ingestion locally (cron isn't hit in the browser):
-#   /dev/ingest/firms   /dev/ingest/weather
+# trigger ingestion locally (cron isn't hit in the browser); needs DEV_TOKEN set,
+# then pass it as a header:
+#   curl -H "X-Dev-Token: $DEV_TOKEN" localhost:8787/dev/ingest/firms
 
 npm run typecheck
 npm run deploy         # deploy Worker; provisions the custom domain on first run
@@ -119,3 +126,8 @@ Phases 0–5 (bootstrap + ingest + Digital Twin + deterministic engine + AI brie
 Telegram alerts) are implemented. Next (Phase 6 fast-follow): event lifecycle/closing,
 Durable Objects, MTG/Copernicus, Vectorize RAG. See the
 [master document](specs/Geospatial_Intelligence_Platform_Master_Document.md#part-vii--build-plan-phased).
+
+## License
+
+[MIT](LICENSE) © Diego Romero. Data feeds (NASA FIRMS, Open-Meteo, AEMET, GDACS,
+Copernicus/EFFIS, INE) are covered by their own licenses and terms of use.

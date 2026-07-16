@@ -288,6 +288,17 @@ export default {
       return fetch(new Request(target, req));
     }
 
+    // Gate the /dev/* manual triggers behind a shared secret. They mutate D1,
+    // spend paid quota (external feeds, the LLM briefing) and can message the
+    // Telegram ops chat, so they must never be open on the public deployment.
+    // Disabled entirely unless DEV_TOKEN is set; then an exact `X-Dev-Token`
+    // match is required. Respond 404 (not 401) so the routes stay invisible.
+    if (pathname.startsWith("/dev/")) {
+      if (!env.DEV_TOKEN || req.headers.get("X-Dev-Token") !== env.DEV_TOKEN) {
+        return json({ error: "not found" }, 404);
+      }
+    }
+
     // Hard rate limit (per client IP) on the API + dev endpoints while testing.
     // Static pages (/, robots, llms, /mapa) are intentionally not limited.
     if (
