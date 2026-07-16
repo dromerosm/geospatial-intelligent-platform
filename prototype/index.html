@@ -316,12 +316,25 @@
       });
     }
 
+    // EUMETSAT EUMETView WMS — geostationary Meteosat (MTG). Public, CORS-open,
+    // reprojects to EPSG:3857 on the fly. No `time` param → GeoServer serves the
+    // latest frame (near-real-time, ~10 min cadence, ~1-2 km at nadir over Iberia).
+    const EUMET_WMS = "https://view.eumetsat.int/geoserver/wms";
     const BASES = {
-      oscuro: { label: "Oscuro", layer: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", { attribution: "© OpenStreetMap · © CARTO", subdomains: "abcd", maxZoom: 19 }) },
-      satelite: { label: "Satélite", layer: gibsWmts("VIIRS_SNPP_CorrectedReflectance_TrueColor", "GoogleMapsCompatible_Level9", "jpg") },
-      falso: { label: "Falso color", layer: gibsWmts("VIIRS_SNPP_CorrectedReflectance_BandsM11-I2-I1", "GoogleMapsCompatible_Level9", "jpg") },
+      oscuro: { label: "Oscuro", note: "", layer: L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", { attribution: "© OpenStreetMap · © CARTO", subdomains: "abcd", maxZoom: 19 }) },
+      satelite: { label: "Satélite", note: "", layer: gibsWmts("VIIRS_SNPP_CorrectedReflectance_TrueColor", "GoogleMapsCompatible_Level9", "jpg") },
+      geocolour: { label: "Geo Colour", note: "Satélite: MTG Geo Colour · tiempo real (~10 min) · © EUMETSAT",
+        layer: L.tileLayer.wms(EUMET_WMS, { layers: "mtg_fd:rgb_geocolour", format: "image/jpeg", version: "1.3.0", maxZoom: 19, attribution: "Imagery © EUMETSAT (MTG · Geo Colour)" }) },
+      falso: { label: "Falso color", note: "", layer: gibsWmts("VIIRS_SNPP_CorrectedReflectance_BandsM11-I2-I1", "GoogleMapsCompatible_Level9", "jpg") },
     };
     let activeBase = BASES.oscuro.layer.addTo(map); // choropleth (overlayPane) stays above the basemap
+
+    // The caption under BASE reflects the ACTIVE satellite base's freshness.
+    const satNote = document.getElementById("sat-note");
+    const refreshSatNote = () => {
+      const b = Object.values(BASES).find((x) => x.layer === activeBase);
+      satNote.textContent = b ? b.note : "";
+    };
 
     const OVERLAYS = {
       firesSNPP:  { label: "Focos VIIRS SNPP",  layer: gibsWms("VIIRS_SNPP_Thermal_Anomalies_375m_All") },
@@ -341,10 +354,6 @@
       ["MODIS_Terra_CorrectedReflectance_TrueColor", "MODIS Terra"],
     ];
     const PROBE_TILE = "3/4/2"; // a zoom-3 tile over Europe/N-Atlantic that GIBS fills
-    const satNote = document.getElementById("sat-note");
-    const setSatNote = (date, sensor) => {
-      satNote.textContent = date ? `Satélite: ${sensor} · ${date}` : "Satélite: imagen no disponible (GIBS)";
-    };
 
     (async () => {
       for (let back = 1; back <= 16; back++) {
@@ -361,11 +370,14 @@
           // False colour + fire overlays follow the same date (best effort).
           BASES.falso.layer.setUrl(gibsWmtsUrl(BASES.falso.layer._gibs.id, BASES.falso.layer._gibs.matrix, BASES.falso.layer._gibs.ext, d));
           Object.values(OVERLAYS).forEach((o) => o.layer.setParams({ time: d }));
-          setSatNote(d, sensor);
+          BASES.satelite.note = `Satélite: ${sensor} · ${d}`;
+          BASES.falso.note = `Falso color: VIIRS SNPP · ${d}`;
+          refreshSatNote();
           return;
         }
       }
-      setSatNote(null); // nothing in the 16-day window
+      BASES.satelite.note = "Satélite: imagen VIIRS no disponible (GIBS)";
+      refreshSatNote();
     })();
 
     // Base selector (radio).
@@ -374,6 +386,7 @@
       const next = BASES[key].layer;
       if (next !== activeBase) { map.removeLayer(activeBase); next.addTo(map); activeBase = next; }
       [...baseSeg.children].forEach((b) => b.classList.toggle("active", b === btn));
+      refreshSatNote();
     }
     Object.entries(BASES).forEach(([key, base], i) => {
       const b = document.createElement("button");
