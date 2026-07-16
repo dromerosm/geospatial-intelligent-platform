@@ -1,5 +1,10 @@
 # Geospatial Intelligence Platform
 
+[![CI](https://github.com/dromerosm/geospatial-intelligent-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/dromerosm/geospatial-intelligent-platform/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![Live demo](https://img.shields.io/badge/demo-live-brightgreen)](https://geospatial-platform.diegoromero.es)
+
 AI-powered geospatial intelligence for **wildfire early warning**, built entirely on
 **Cloudflare**. It enriches authoritative public data (NASA FIRMS, weather) with a
 territorial *Digital Twin*, scores events with an **explainable deterministic engine**,
@@ -112,8 +117,11 @@ npm run dev            # local Worker; visit /health
 #   curl -H "X-Dev-Token: $DEV_TOKEN" localhost:8787/dev/ingest/firms
 
 npm run typecheck
+npm test               # Vitest unit suite (FWI math, scoring engine, H3 helpers)
 npm run deploy         # deploy Worker; provisions the custom domain on first run
 ```
+
+CI (GitHub Actions) runs `typecheck` + `test` on every push and pull request.
 
 The custom domain requires the `diegoromero.es` zone on the same Cloudflare account.
 

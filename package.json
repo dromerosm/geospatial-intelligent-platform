@@ -4,10 +4,15 @@
   "private": true,
   "description": "AI-powered Geospatial Intelligence Platform (wildfire early warning) on Cloudflare — MVP for Aragón.",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:apply:local": "wrangler d1 migrations apply geospatial-db --local",
     "db:apply:remote": "wrangler d1 migrations apply geospatial-db --remote",
     "twin:build": "node scripts/build-digital-twin.mjs",
@@ -24,6 +29,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260708.1",
     "typescript": "^5.7.0",
+    "vitest": "^3.2.7",
     "wrangler": "^4.56.0"
   },
   "allowScripts": {
