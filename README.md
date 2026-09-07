@@ -26,6 +26,10 @@ switching to the **near-real-time Meteosat (MTG) satellite base** and overlaying
 
 ▶ Try it live: **[/mapa](https://geospatial-platform.diegoromero.es/mapa)** · API docs: **[/docs](https://geospatial-platform.diegoromero.es/docs)**
 
+The map now uses MapLibre and OpenFreeMap without a basemap API key. See the
+[map guide](prototype/README.md) for local development and the
+[migration record](docs/maplibre-migration.md) for decisions, validation and rollback.
+
 ## Architecture (one line per layer)
 
 | Layer | What | Cloudflare primitive |
@@ -154,4 +158,4 @@ licenses and terms of use, and are attributed in-app:
 - **Feeds:** NASA FIRMS, Open-Meteo, AEMET, GDACS, Copernicus/EFFIS, INE.
 - **Satellite basemaps:** NASA EOSDIS GIBS (VIIRS/MODIS daily true colour), **EUMETSAT ·
   Meteosat MTG** (near-real-time *Geo Colour* via the public EUMETView WMS — © EUMETSAT).
-- **Base map:** © OpenStreetMap contributors · © CARTO.
+- **Base map:** OpenFreeMap · © OpenMapTiles · © OpenStreetMap contributors, rendered with MapLibre GL JS.
