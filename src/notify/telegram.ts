@@ -5,6 +5,7 @@
 // it (priority threshold + dedup) and treats it as best-effort: a failed send just
 // leaves event.notified_at NULL and is retried on the next pass. It NEVER creates
 // or changes events — it only relays what the deterministic engine already decided.
+import { cellToLatLng } from "h3-js";
 import { PUBLIC_ORIGIN, TELEGRAM_API, TELEGRAM_TIMEOUT_MS } from "../config.js";
 
 /** The briefing fields an alert needs (subset of the stored briefing_json). */
@@ -34,10 +35,13 @@ export function buildMessage(args: {
 }): string {
   const { cell, municipio, score, confidence, briefing } = args;
   const emoji = PRIORITY_EMOJI[briefing.priority] ?? "🟠";
-  const where = municipio ? esc(municipio) : esc(cell);
+  const [lat, lng] = cellToLatLng(cell);
+  const coordinates = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  const where = municipio?.trim() ? `${esc(municipio.trim())} · Aragón` : 'Aragón · municipio no disponible';
   const mapUrl = `${PUBLIC_ORIGIN}/mapa/?event=${encodeURIComponent(cell)}`;
   return (
     `${emoji} <b>${esc(briefing.priority.toUpperCase())}</b> — ${where}\n\n` +
+    `📍 Centro aproximado de la celda: ${coordinates} · H3 ${esc(cell)}\n\n` +
     `${esc(briefing.briefing_text)}\n\n` +
     `<i>Precisión:</i> ${esc(briefing.source_precision_statement)}\n` +
     `Score ${score} · confianza ${confidence}\n` +

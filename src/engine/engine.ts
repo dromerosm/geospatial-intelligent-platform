@@ -156,12 +156,20 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
   const minPriority = await loadMinPriority(env);
   let events = 0;
   let subthreshold = 0;
+  let outsideCoverage = 0;
   let briefed = 0;
   let rateLimited = false; // once true, skip briefings for the rest of this pass
   let notified = 0;
   let notifyRateLimited = false; // once true, skip notifications for the rest of this pass
   for (const [cell, group] of byCell) {
     const twin = (await digitalTwinCell(env, cell)) as Record<string, any> | null;
+    // FIRMS ingestion uses a bounding box. Only the polygon-derived regional
+    // twin defines the supported H3 footprint; missing coverage is not fuel=unknown.
+    if (!twin) {
+      outsideCoverage++;
+      await writeAudit(env, "score", { cell, reason: "outside_territorial_coverage" });
+      continue; // No regional weather, score, event, AI call or Telegram message.
+    }
     const fw = (await fireWeatherCell(env, nearestWeatherCell(cell))) as Record<string, any> | null;
     const lightning = await hasActiveLightningWatch(env, cell, nowIso);
 
@@ -226,6 +234,6 @@ export async function runDecisionEngine(env: Env): Promise<{ clusters: number; e
   const staleSince = new Date(Date.now() - CLOSE_STALE_H * 3600_000).toISOString();
   const closed = await closeStaleEvents(env, staleSince, nowIso);
 
-  await writeAudit(env, "engine", { window_h: WINDOW_H, clusters: byCell.size, events, subthreshold, briefed, rateLimited, notified, notifyRateLimited, closed });
+  await writeAudit(env, "engine", { window_h: WINDOW_H, clusters: byCell.size, events, subthreshold, outsideCoverage, briefed, rateLimited, notified, notifyRateLimited, closed });
   return { clusters: byCell.size, events, subthreshold, closed };
 }

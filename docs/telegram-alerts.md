@@ -54,3 +54,12 @@ curl "localhost:8787/dev/observe/test?lat=42.5&lng=0.1&confidence=0.9&count=3" #
 curl "localhost:8787/dev/engine/run"                                           # brief + (high/critical) notify
 # open the deep link the alert contains: …/mapa/?event=<h3>
 ```
+
+## Regional coverage and location
+
+Events must belong to the polygon-derived Aragón digital twin before the engine
+can create a briefing or send an alert. Messages include municipality and the
+approximate H3 cell centre as coordinates; the centre is not an exact ignition
+location. A missing municipality is stated explicitly, with coordinates retained.
+See [the regional event correction](event-region-fix.md) for the cause, migration,
+tests and treatment of earlier notifications.
