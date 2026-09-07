@@ -1,3 +1,4 @@
+import { createTerrain } from './terrain.js';
     const fmt = (n) => Math.round(n).toLocaleString("es-ES");
     const NODATA = "#3a3d44";
 
@@ -86,6 +87,7 @@ const $ = (id) => document.getElementById(id);
 const status = (message = '') => { $('map-status').textContent = message; };
 const collection = (features = []) => ({ type: 'FeatureCollection', features });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let terrain;
 let map, FC, ACT = LAYERS.density;
 let baseIds = [], weatherPromise, h3Promise, wxReady = false;
 const selected = new Set();
@@ -235,16 +237,17 @@ async function selectBase(key) {
   if (key === 'satelite' || key === 'falso') {
     const { date, sensor } = await ensureGibsDate();
     if (request !== baseRequest) return;
-    addRaster(key, wmts(key === 'satelite' ? sensor.tc : sensor.fc, date), 'Imagery © NASA EOSDIS GIBS', 'cells', 9);
+    addRaster(key, wmts(key === 'satelite' ? sensor.tc : sensor.fc, date), 'Imagery © NASA EOSDIS GIBS', map.getLayer('terrain-shade') ? 'terrain-shade' : 'cells', 9);
     note = `${BASES[key]}: ${sensor.label} · ${date}`;
   } else if (key === 'geocolour') {
-    addRaster(key, wms(EUMET_WMS, 'mtg_fd:rgb_geocolour', null, false), 'Imagery © EUMETSAT', 'cells');
+    addRaster(key, wms(EUMET_WMS, 'mtg_fd:rgb_geocolour', null, false), 'Imagery © EUMETSAT', map.getLayer('terrain-shade') ? 'terrain-shade' : 'cells');
     note = 'Satélite: MTG Geo Colour · último fotograma disponible · © EUMETSAT';
   }
   visibility(baseIds, key === 'oscuro');
   for (const k of ['satelite', 'falso', 'geocolour']) if (map.getLayer(k)) visibility([k], k === key);
   Object.entries(baseButtons).forEach(([k, b]) => pressed(b, k === key));
   $('sat-note').textContent = note;
+  terrain.setBase(key);
 }
 Object.entries(BASES).forEach(([key, label]) => { baseButtons[key] = button('base-seg', label, () => selectBase(key)); });
 pressed(baseButtons.oscuro, true);
@@ -289,9 +292,9 @@ async function loadMeteo() {
     const el = document.createElement('div'); el.className = 'wind-arrow';
     el.title = `${r.temp_c}°C · HR ${r.rh_pct}% · viento ${r.wind_kmh} km/h ${COMPASS[Math.round(r.wind_dir_deg / 45) % 8]}${r.triple30 ? ' · ⚠ Triple-30' : ''}`;
     const color = r.triple30 ? '#ff3b30' : r.wind_kmh >= 30 ? '#ff8c00' : r.wind_kmh >= 15 ? '#ffd11a' : '#8fd0ff';
-    el.innerHTML = `<svg width="22" height="22" viewBox="0 0 22 22">${r.triple30 ? '<circle cx="11" cy="11" r="9.5" fill="none" stroke="#ff3b30" stroke-width="2"/>' : ''}<g transform="rotate(${(Number(r.wind_dir_deg) + 180) % 360} 11 11)"><path d="M11 4 V17 M11 4 L8 8 M11 4 L14 8" stroke="${color}" stroke-width="2" fill="none" stroke-linecap="round"/></g></svg>`;
+    el.innerHTML = `<svg width="22" height="22" viewBox="0 0 22 22">${r.triple30 ? '<circle cx="11" cy="11" r="9.5" fill="none" stroke="#ff3b30" stroke-width="2"/>' : ''}<g><path d="M11 4 V17 M11 4 L8 8 M11 4 L14 8" stroke="${color}" stroke-width="2" fill="none" stroke-linecap="round"/></g></svg>`;
     el.setAttribute('role', 'img'); el.setAttribute('aria-label', el.title);
-    return new maplibregl.Marker({ element: el }).setLngLat([lng, lat]);
+    return new maplibregl.Marker({ element: el, rotation: (Number(r.wind_dir_deg) + 180) % 360, rotationAlignment: 'map', pitchAlignment: 'map', opacityWhenCovered: 0.3 }).setLngLat([lng, lat]);
   }));
 }
 async function loadFirms() {
@@ -325,7 +328,11 @@ async function loadEvents() {
     const el = document.createElement('button');
     el.type = 'button'; el.className = 'event-marker'; el.style.backgroundColor = PRIO[prio] || PRIO.medium;
     el.setAttribute('aria-label', `Evento ${e.h3_cell} · ${prio}`);
-    const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).setPopup(popup);
+    // MapLibre toggles on keypress; suppress the button's second native click.
+    el.addEventListener('keypress', (event) => {
+      if (event.code === 'Enter' || event.code === 'Space') event.preventDefault();
+    });
+    const marker = new maplibregl.Marker({ element: el, opacityWhenCovered: 0.3 }).setLngLat([lng, lat]).setPopup(popup);
     eventMarkers.set(e.h3_cell, marker);
     return marker;
   });
@@ -375,11 +382,12 @@ async function start() {
   for (const f of fc.features) {
     for (const [key, layer] of Object.entries(LAYERS)) f.properties[`color_${key}`] = layer.colorOf(f.properties);
   }
-  map = new maplibregl.Map({ container: 'map', style, center: [-.9, 41.3], zoom: 7, maxZoom: 19, dragRotate: false, pitchWithRotate: false, attributionControl: false });
+  map = new maplibregl.Map({ container: 'map', style, center: [-.9, 41.3], zoom: 7, maxZoom: 19, maxPitch: 0, pitchWithRotate: true, attributionControl: false });
   map.touchZoomRotate.disableRotation();
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'bottom-right');
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
   map.on('error', (e) => {
+    if (terrain?.handleError(e)) return;
     console.error('Map resource error:', e.error);
     status('No se ha podido cargar un recurso del mapa. Puedes cambiar de fondo o recargar la página.');
   });
@@ -388,6 +396,17 @@ async function start() {
   map.addLayer({ id: 'cells', source: 'cells', type: 'fill', paint: { 'fill-color': ['get', 'color_density'], 'fill-opacity': .75 } });
   map.addLayer({ id: 'cell-lines', source: 'cells', type: 'line', paint: { 'line-color': '#000', 'line-width': .15 } });
   map.addLayer({ id: 'cell-hover', source: 'cells', type: 'line', paint: { 'line-color': '#fff', 'line-width': 1.2 }, filter: ['==', ['get', 'h3'], ''] });
+  terrain = createTerrain(map, ({ state, available, message }) => {
+    $('terrain-3d').disabled = !available || state === 'loading';
+    pressed($('terrain-3d'), state !== 'flat');
+    $('terrain-note').textContent = message || (available
+      ? (state === 'flat' ? 'Inclina con dos dedos o Mayús + ↑/↓. Gira con Mayús + ←/→.' : 'Relieve 3D · alturas reales')
+      : 'Selecciona una base satélite para explorar el relieve.');
+  });
+  $('terrain-3d').onclick = () => terrain.enable();
+  $('terrain-2d').onclick = () => terrain.reset();
+  $('terrain-2d').disabled = false;
+  terrain.setBase('oscuro');
   function inspect(e) {
     const f = e.features?.[0]; if (!f) return;
     showInfo(f.properties);

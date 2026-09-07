@@ -20,3 +20,6 @@
 
 /styles/*
   Cache-Control: public, max-age=0, must-revalidate
+
+/terrain.js
+  Cache-Control: public, max-age=0, must-revalidate

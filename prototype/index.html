@@ -68,14 +68,14 @@
     #title .stats span { color: var(--muted); font-size: 11px; }
     #title .seg-label { margin-top: 13px; font-size: 11px; color: var(--muted);
       text-transform: uppercase; letter-spacing: 0.04em; }
-    #seg, #base-seg, #ov-seg, #proj-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-    #seg button, #base-seg button, #ov-seg button, #proj-seg button {
+    #seg, #base-seg, #ov-seg, #terrain-seg, #proj-seg { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+    #seg button, #base-seg button, #ov-seg button, #terrain-seg button, #proj-seg button {
       font: inherit; font-size: 12px; color: var(--muted);
       background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border);
       border-radius: 6px; padding: 5px 9px; cursor: pointer;
     }
-    #seg button:hover, #base-seg button:hover, #ov-seg button:hover, #proj-seg button:hover { color: var(--text); border-color: var(--muted); }
-    #seg button.active, #base-seg button.active, #ov-seg button.active, #proj-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #seg button:hover, #base-seg button:hover, #ov-seg button:hover, #terrain-seg button:hover, #proj-seg button:hover { color: var(--text); border-color: var(--muted); }
+    #seg button.active, #base-seg button.active, #ov-seg button.active, #terrain-seg button.active, #proj-seg button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
     #title .hint { margin-top: 5px; font-size: 11px; color: var(--muted); }
 
     #info {
@@ -154,6 +154,8 @@
     <div class="seg-label">Base</div>
     <div id="base-seg"></div>
     <div id="sat-note" class="hint"></div>
+    <div id="terrain-seg"><button id="terrain-3d" type="button" aria-pressed="false" disabled>Relieve 3D</button><button id="terrain-2d" type="button" disabled>2D · Norte</button></div>
+    <div id="terrain-note" class="hint" role="status">Selecciona una base satélite para explorar el relieve.</div>
     <div class="seg-label">Capas GIBS (satélite)</div>
     <div id="ov-seg"></div>
     <div class="seg-label">Capas del proyecto</div>
@@ -189,6 +191,6 @@
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-  <script src="map.js" defer></script>
+  <script src="map.js" type="module"></script>
 </body>
 </html>

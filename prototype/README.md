@@ -109,3 +109,14 @@ The existing Pages project is `geospatial-platform-map`. The Worker proxies it
 under `/mapa/`; a map-only release does not require a Worker deployment.
 Rebuild the GeoJSON with `npm run map:build` only when the territorial snapshot
 changes. This migration keeps the dataset and its classification scales intact.
+
+## Satellite terrain
+
+Select a satellite background and use **Relieve 3D**, or tilt the map. Elevation
+loads on demand. **2D · Norte** removes it and resets the view; **Oscuro** also
+returns to 2D. Satellite and false colour receive subtle hillshade. Geo Colour
+keeps its cloud imagery without extra shading. See the [terrain record](../docs/terrain-3d.md)
+for controls, provider attribution, resource impact, tests and rollback.
+
+`terrain.js` manages this optional mode. `map:check` includes its lifecycle tests
+from `scripts/terrain.test.mjs`, including provider errors and timeout fallback.
