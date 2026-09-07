@@ -7,7 +7,7 @@ async function get(path) {
   return r;
 }
 const html = await (await get('')).text();
-assert.match(html, /maplibre-gl@5\.24\.0/);
+assert.match(html, /vendor\/maplibre-gl-5\.24\.0/);
 assert.doesNotMatch(html, /leaflet|cartocdn/i);
 const js = await (await get('map.js')).text();
 assert.doesNotMatch(js, /\bL\.(map|tileLayer)|cartocdn/);
@@ -19,6 +19,15 @@ const style = await (await get('styles/dark.json')).json();
 assert.equal(style.version, 8);
 assert.equal(style.sources.openmaptiles.url, 'https://tiles.openfreemap.org/planet');
 const fc = await (await get('data/aragon-density.geojson')).json();
+const metadata = await (await get('data/map-metadata.json')).json();
+assert.equal(metadata.cells, fc.metadata.cells);
+assert.equal(metadata.populationTotal, fc.metadata.populationTotal);
+const bounds = [[Infinity, Infinity], [-Infinity, -Infinity]];
+for (const f of fc.features) for (const [x, y] of f.geometry.coordinates[0]) {
+  bounds[0][0] = Math.min(bounds[0][0], x); bounds[0][1] = Math.min(bounds[0][1], y);
+  bounds[1][0] = Math.max(bounds[1][0], x); bounds[1][1] = Math.max(bounds[1][1], y);
+}
+assert.deepEqual(metadata.bounds, bounds, 'Startup extent does not match the territorial data');
 assert.equal(fc.type, 'FeatureCollection');
 assert.equal(fc.features.length, fc.metadata.cells);
 assert.equal(new Set(fc.features.map(f => f.properties.h3)).size, fc.features.length);

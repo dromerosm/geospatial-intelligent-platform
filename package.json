@@ -19,11 +19,12 @@
     "weather:grid": "node scripts/build-weather-grid.mjs",
     "twin:apply:local": "wrangler d1 execute geospatial-db --local --file tmp/digital-twin.sql",
     "twin:apply:remote": "wrangler d1 execute geospatial-db --remote --file tmp/digital-twin.sql",
-    "map:build": "node prototype/build-geojson.mjs",
+    "map:build": "node prototype/build-geojson.mjs && node scripts/map-metadata.mjs",
     "map:deploy": "wrangler pages deploy prototype --project-name geospatial-platform-map --branch main --commit-dirty=true",
     "map:dev": "node scripts/map-dev.mjs",
-    "map:check": "node --check prototype/map.js && node --check scripts/map-dev.mjs && node --check scripts/map-smoke.mjs && node --check prototype/terrain.js && node --test scripts/terrain.test.mjs",
-    "map:smoke": "node scripts/map-smoke.mjs"
+    "map:check": "node --check prototype/map.js && node --check scripts/map-dev.mjs && node --check scripts/map-smoke.mjs && node --check prototype/terrain.js && node --test scripts/terrain.test.mjs && node --check scripts/map-metadata.mjs",
+    "map:smoke": "node scripts/map-smoke.mjs",
+    "audit:lighthouse": "node scripts/lighthouse.mjs"
   },
   "dependencies": {
     "h3-js": "^4.1.0",

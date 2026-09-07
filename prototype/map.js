@@ -376,13 +376,13 @@ Object.entries(PROJECTS).forEach(([key, ov]) => { projectButtons[key] = button('
 
 async function start() {
   if (!window.maplibregl) throw new Error('No se pudo cargar MapLibre. Revisa la conexión y recarga la página.');
-  const [style, fc] = await Promise.all([getJson('styles/dark.json'), getJson('data/aragon-density.geojson')]);
-  FC = fc;
+  // Start the basemap from a tiny manifest while the territorial payload loads.
+  const dataPromise = getJson('data/aragon-density.geojson').then(
+    (data) => ({ data }), (error) => ({ error }));
+  const [style, metadata] = await Promise.all([getJson('styles/dark.json'), getJson('data/map-metadata.json')]);
   baseIds = style.layers.map((l) => l.id);
-  for (const f of fc.features) {
-    for (const [key, layer] of Object.entries(LAYERS)) f.properties[`color_${key}`] = layer.colorOf(f.properties);
-  }
-  map = new maplibregl.Map({ container: 'map', style, center: [-.9, 41.3], zoom: 7, maxZoom: 19, maxPitch: 0, pitchWithRotate: true, attributionControl: false });
+  const padding = { top: 24, bottom: 30, left: innerWidth > 640 ? 350 : 24, right: 24 };
+  map = new maplibregl.Map({ container: 'map', style, bounds: metadata.bounds, fitBoundsOptions: { padding }, maxZoom: 19, maxPitch: 0, pitchWithRotate: true, attributionControl: false });
   map.touchZoomRotate.disableRotation();
   map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'bottom-right');
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
@@ -392,6 +392,16 @@ async function start() {
     status('No se ha podido cargar un recurso del mapa. Puedes cambiar de fondo o recargar la página.');
   });
   await new Promise((resolve) => map.once('load', resolve));
+  const result = await dataPromise;
+  if (result.error) throw result.error;
+  const fc = result.data;
+  FC = fc;
+  for (let i = 0; i < fc.features.length; i++) {
+    const f = fc.features[i];
+    for (const [key, layer] of Object.entries(LAYERS)) f.properties[`color_${key}`] = layer.colorOf(f.properties);
+    // Let input and paint run between batches on slower phones.
+    if (i % 500 === 499) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
   map.addSource('cells', { type: 'geojson', data: FC, promoteId: 'h3' });
   map.addLayer({ id: 'cells', source: 'cells', type: 'fill', paint: { 'fill-color': ['get', 'color_density'], 'fill-opacity': .75 } });
   map.addLayer({ id: 'cell-lines', source: 'cells', type: 'line', paint: { 'line-color': '#000', 'line-width': .15 } });
@@ -419,9 +429,7 @@ async function start() {
   const m = fc.metadata || {};
   set('st-cells', fmt(m.cells ?? fc.features.length)); set('st-pop', fmt(m.populationTotal ?? 0));
   set('st-eld', (m.populationTotal ? Math.round(m.elderlyTotal / m.populationTotal * 100) : 0) + ' %');
-  const bounds = new maplibregl.LngLatBounds();
-  for (const f of fc.features) for (const coord of f.geometry.coordinates[0]) bounds.extend(coord);
-  map.fitBounds(bounds, { padding: { top: 24, bottom: 30, left: innerWidth > 640 ? 350 : 24, right: 24 }, duration: 0 });
+
   for (const id of ['seg', 'base-seg', 'ov-seg', 'proj-seg']) for (const b of $(id).children) b.disabled = false;
   $('map').setAttribute('aria-label', `Mapa de Aragón · ${fc.features.length} celdas`);
   const focusCell = new URLSearchParams(location.search).get('event');

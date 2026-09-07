@@ -18,11 +18,14 @@
   <meta property="og:description" content="Mapa interactivo del Digital Twin de Aragón: población, envejecimiento, combustible e histórico de incendios sobre 9.408 celdas H3 (INE 2025, CORINE, EFFIS)." />
   <meta property="og:url" content="https://geospatial-platform.diegoromero.es/mapa/" />
   <meta name="twitter:card" content="summary" />
-  <!-- Perf: warm up the CDN + tile connections early -->
+  <link rel="preload" as="fetch" href="data/map-metadata.json" crossorigin />
+  <link rel="preload" as="fetch" href="styles/dark.json" crossorigin />
+  <link rel="preload" as="fetch" href="data/aragon-density.geojson" crossorigin />
+  <!-- Warm the optional H3 helper and basemap connections. -->
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
   <link rel="dns-prefetch" href="https://tiles.openfreemap.org" />
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="vendor/maplibre-gl-5.24.0.css" />
   <style>
     :root {
       --bg: #0f1115;
@@ -190,7 +193,7 @@
     <div class="row"><span>Celda H3</span><span id="in-h3">—</span></div>
   </div>
 
-  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="vendor/maplibre-gl-5.24.0.js" defer></script>
   <script src="map.js" type="module"></script>
 </body>
 </html>
