@@ -123,6 +123,29 @@ export const SWAGGER_UI_HTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Google Analytics 4 (shared diegoromero.es property). -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-B8118TCBQY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    // Visit any page with ?internal=1 once per browser to exclude your own
+    // traffic (GA4 "Internal Traffic" filter); ?internal=0 undoes it.
+    const isInternalTraffic = (() => {
+      try {
+        const flag = new URLSearchParams(location.search).get("internal");
+        if (flag === "1") localStorage.setItem("ga_internal", "1");
+        if (flag === "0") localStorage.removeItem("ga_internal");
+        return localStorage.getItem("ga_internal") === "1";
+      } catch { return false; }
+    })();
+    gtag("config", "G-B8118TCBQY", {
+      anonymize_ip: true,
+      allow_google_signals: false,
+      allow_ad_personalization_signals: false,
+      ...(isInternalTraffic && { traffic_type: "internal" }),
+    });
+  </script>
   <title>API · Geospatial Intelligence Platform</title>
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
   <style>body{margin:0}.topbar{display:none}</style>

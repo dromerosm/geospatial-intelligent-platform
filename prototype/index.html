@@ -3,6 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Google Analytics 4 (shared diegoromero.es property). -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-B8118TCBQY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag("js", new Date());
+    // Visit any page with ?internal=1 once per browser to exclude your own
+    // traffic (GA4 "Internal Traffic" filter); ?internal=0 undoes it.
+    const isInternalTraffic = (() => {
+      try {
+        const flag = new URLSearchParams(location.search).get("internal");
+        if (flag === "1") localStorage.setItem("ga_internal", "1");
+        if (flag === "0") localStorage.removeItem("ga_internal");
+        return localStorage.getItem("ga_internal") === "1";
+      } catch { return false; }
+    })();
+    gtag("config", "G-B8118TCBQY", {
+      anonymize_ip: true,
+      allow_google_signals: false,
+      allow_ad_personalization_signals: false,
+      ...(isInternalTraffic && { traffic_type: "internal" }),
+    });
+  </script>
   <title>Densidad de población y riesgo de incendio · Aragón</title>
   <meta name="description" content="Mapa interactivo del Digital Twin de Aragón: densidad de población, envejecimiento, combustible e histórico de incendios sobre 9.408 celdas H3, con datos del INE 2025, CORINE Land Cover y EFFIS." />
   <meta name="theme-color" content="#0f1115" />
