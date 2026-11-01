@@ -157,7 +157,7 @@ export const SWAGGER_UI_HTML = `<!doctype html>
   <header class="docs-header">
     <h1>${escapeHtml(docsInfo.title)}</h1>
     <p>${escapeHtml(docsInfo.description)}</p>
-    <p><a href="/">Project home</a> · <a href="/openapi.json">OpenAPI 3.1 spec</a></p>
+    <p><a href="/">Project home</a> · <a href="/openapi.json">OpenAPI 3.1 spec</a> · <a href="https://diegoromero.es/en/cookies/" data-cookie-settings>Cookie settings</a></p>
     <h2>Endpoints</h2>
   </header>
   <div id="ui"></div>
