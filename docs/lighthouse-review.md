@@ -102,3 +102,40 @@ The changes follow elon-algo: keep the requested automatic map, remove an avoida
 CDN connection and redundant camera pass, simplify startup with existing data,
 then automate measurement. The remaining product and zone-security decisions are
 explicit rather than hidden in the implementation.
+
+## Update — 1 November 2026
+
+The owner set a lighter gate for every site that shares the diegoromero.es GA4
+loader: Lighthouse on production, mobile, the median of three runs, before and
+after each deploy. Thresholds are 75 for performance and 90 for accessibility,
+best practices and SEO. One exemption was agreed: the best-practices
+`deprecations` audit is ignored when all its items come from Cloudflare's
+injected `/cdn-cgi/challenge-platform` script, which cannot be changed.
+
+Changes shipped on this date:
+
+- GA4 moved to the shared `prototype/analytics.js`. It loads `gtag.js` only on
+  `diegoromero.es` hosts, after the first interaction or an idle moment.
+- `/docs`: a static header puts the headings in order, and CSS overrides give the
+  Swagger UI badges and links AA contrast and 24 px tap targets. It also gained a
+  meta description and canonical link.
+- `/mapa/`: MapLibre's worker loads the cells, colours are paint expressions,
+  MapLibre runs after the first paint and a loading notice covers the map until
+  the cells are drawn. See the map guide for details.
+
+| Page | Before | After |
+| --- | --- | --- |
+| home | 83 / 100 / 82 / 92 | 96 / 100 / 100 / 92 |
+| `/docs` | 70 / 83 / 96 / 82 | 76 / 95 / 100 / 92 |
+| `/mapa/` | 42 / 100 / 100 / 92 | 69 / 100 / 100 / 92 |
+
+Scores are performance / accessibility / best practices / SEO. "Before" best
+practices include the Cloudflare deprecations; "after" applies the exemption.
+
+**Accepted exception.** `/mapa/` stays below the performance threshold at 69,
+with runs of 46, 73 and 69. Its LCP fell from about 9 s to about 2 s. What is left
+is MapLibre's own start-up work (more than 1 s of total blocking time on the
+simulated phone), plus Cloudflare's script and GA4. Removing every base-map label
+only raised the local score by two points. Passing would need the map to open
+behind an "Explore map" button, a product change the owner chose not to make. The
+owner accepted 69 for this page on 1 November 2026.
