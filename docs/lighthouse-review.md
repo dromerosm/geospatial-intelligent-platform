@@ -139,3 +139,17 @@ simulated phone), plus Cloudflare's script and GA4. Removing every base-map labe
 only raised the local score by two points. Passing would need the map to open
 behind an "Explore map" button, a product change the owner chose not to make. The
 owner accepted 69 for this page on 1 November 2026.
+
+**Cookie consent, same day.** GA4 now loads only after the visitor accepts the
+cookie notice, so Lighthouse runs no longer load `gtag.js`. Median performance
+after that deploy: home 99, `/mapa/` 75 (runs 73, 78 and 75) and `/docs` 75
+(runs 78, 75 and 75).
+
+**Accepted exception.** `/docs` sits on the performance threshold: its median
+rounds to 75 but stays just under 0.75, after 70 before these changes. LCP
+(1.9 s) and CLS (0) are fine. Total blocking time is what holds it back: in one
+profiled run Cloudflare's injected `/cdn-cgi/challenge-platform` script took about
+2.5 s of CPU and the Swagger UI bundle about 1.5 s. The first cannot be changed.
+Passing reliably would mean replacing Swagger UI with static documentation and
+losing "Try it out", which the owner chose not to do. The owner accepted `/docs`
+as an exception on 1 November 2026.
