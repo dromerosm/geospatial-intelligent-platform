@@ -124,10 +124,17 @@ from `scripts/terrain.test.mjs`, including provider errors and timeout fallback.
 ## Startup and Lighthouse
 
 MapLibre 5.24.0 now comes from the versioned files in `vendor/`, with its license.
-Its deferred script does not block HTML parsing. The basemap uses the small
-`data/map-metadata.json` manifest to frame Aragón before the full territorial
-payload is ready. Colour preparation yields between batches on the main thread.
-The map still starts automatically and retains all 9,408 cells.
+`map.js` fetches and runs it after the first paint, so the page and its loading
+notice are on screen before that download and long task. The basemap uses the small
+`data/map-metadata.json` manifest to frame Aragón and fill the panel figures.
+MapLibre's worker downloads and parses `data/aragon-density.geojson` itself; the
+page never parses it on the main thread at startup. Layer colours are MapLibre
+expressions over the cell properties, so no per-cell JavaScript runs and changing
+a layer never re-uploads the polygons. EFFIS history is a filter over the same
+source. Temperature and FWI read the cell list only when first selected and store
+each cell's nearest weather value in feature state. A loading notice covers the
+map until the cells are drawn. The map still starts automatically and retains all
+9,408 cells.
 
 `npm run map:build` also regenerates the manifest. To refresh only the manifest
 from the existing GeoJSON, run `node scripts/map-metadata.mjs`. The smoke check

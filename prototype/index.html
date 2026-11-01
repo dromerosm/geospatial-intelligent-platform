@@ -22,7 +22,6 @@
   <meta name="twitter:card" content="summary" />
   <link rel="preload" as="fetch" href="data/map-metadata.json" crossorigin />
   <link rel="preload" as="fetch" href="styles/dark.json" crossorigin />
-  <link rel="preload" as="fetch" href="data/aragon-density.geojson" crossorigin />
   <!-- Warm the optional H3 helper and basemap connections. -->
   <link rel="preconnect" href="https://unpkg.com" crossorigin />
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
@@ -111,6 +110,16 @@
     .maplibregl-popup-content { max-height: min(300px, 55vh); overflow-y: auto; padding: 16px; }
     .maplibregl-popup-close-button { font-size: 22px; }
     #map-status { color: #ffb5a7; font-size: 12px; }
+    /* Shown from the first paint until the cells are on screen, so phones (where
+       the panel starts closed) see what is loading instead of an empty map. */
+    #map-loading {
+      position: absolute; inset: 0; z-index: 1; pointer-events: none;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; padding: 24px; text-align: center; color: var(--muted); font-size: 13px;
+    }
+    #map-loading p { margin: 0; max-width: 34ch; }
+    #map-loading.done { opacity: 0; transition: opacity .3s; }
+    #map-loading .ml-title { color: var(--text); font-size: 20px; font-weight: 600; }
     button:disabled { cursor: wait; opacity: .6; }
 
     /* The control panel is always open on wide screens, so the toggle is hidden. */
@@ -142,6 +151,10 @@
 </head>
 <body>
   <div id="map"></div>
+  <div id="map-loading" aria-hidden="true">
+    <p class="ml-title">Cargando el mapa de Aragón…</p>
+    <p>9.408 celdas H3 con población, combustible e historial de incendios</p>
+  </div>
 
   <button id="panel-toggle" type="button" aria-controls="title" aria-expanded="false">☰ Capas</button>
 
@@ -195,7 +208,6 @@
     <div class="row"><span>Celda H3</span><span id="in-h3">—</span></div>
   </div>
 
-  <script src="vendor/maplibre-gl-5.24.0.js" defer></script>
   <script src="map.js" type="module"></script>
 </body>
 </html>

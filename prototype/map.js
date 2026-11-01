@@ -2,14 +2,18 @@ import { createTerrain } from './terrain.js';
     const fmt = (n) => Math.round(n).toLocaleString("es-ES");
     const NODATA = "#3a3d44";
 
-    // Pick the colour for a value from ascending break lower-bounds.
-    function breakColor(v, breaks, colors) {
-      for (let i = breaks.length - 1; i >= 0; i--) if (v >= breaks[i]) return colors[i];
-      return colors[0];
-    }
     // Build legend rows (top = highest class) from breaks + colours + labels.
     function breakLegend(colors, labels) {
       return colors.map((c, i) => ({ color: c, label: labels[i] })).reverse();
+    }
+    // Colour for a value from ascending break lower-bounds, as a MapLibre expression:
+    // the GPU picks each cell's colour and no per-cell JavaScript runs at startup.
+    function breakExpr(input, breaks, colors) {
+      return ['step', input, colors[0], ...breaks.slice(1).flatMap((b, i) => [b, colors[i + 1]])];
+    }
+    // Temperature and FWI live in feature state, filled in when first selected.
+    function stateExpr(key, breaks, colors) {
+      return ['case', ['==', ['typeof', ['feature-state', key]], 'number'], breakExpr(['feature-state', key], breaks, colors), NODATA];
     }
 
     // --- Population density (hab/km²) — hand-set breaks, YlOrRd ------------------
@@ -30,7 +34,6 @@ import { createTerrain } from './terrain.js';
       { key: "low",       color: "#fed976", label: "Bajo" },
       { key: "none",      color: "#6b7076", label: "Nulo (agua/urbano)" },
     ];
-    const FUEL_COLOR = Object.fromEntries(FUEL.map((f) => [f.key, f.color]));
     const FUEL_LABEL = Object.fromEntries(FUEL.map((f) => [f.key, f.label]));
 
     // --- Air temperature 2 m (°C) — cool→warm; nearest fire-weather point ------
@@ -43,24 +46,24 @@ import { createTerrain } from './terrain.js';
     const FWI_COLORS = ["#1a9850","#91cf60","#fee08b","#fc8d59","#d73027","#7f0000"];
     const FWI_LABELS = ["Muy bajo","Bajo","Moderado","Alto","Muy alto","Extremo"];
 
-    // Layers: colorOf(properties) -> fill; legend rows; legend title.
+    // Layers: fill expression; legend rows; legend title.
     const LAYERS = {
       density: {
         label: "Densidad",
         legendTitle: "Habitantes / km²",
-        colorOf: (p) => breakColor(p.density, D_BREAKS, D_COLORS),
+        fill: breakExpr(['get', 'density'], D_BREAKS, D_COLORS),
         legend: breakLegend(D_COLORS, D_LABELS),
       },
       elderly: {
         label: "% mayores 65+",
         legendTitle: "% población 65+",
-        colorOf: (p) => (p.population > 0 ? breakColor(p.pct_elderly, E_BREAKS, E_COLORS) : NODATA),
+        fill: ['case', ['>', ['get', 'population'], 0], breakExpr(['get', 'pct_elderly'], E_BREAKS, E_COLORS), NODATA],
         legend: breakLegend(E_COLORS, E_LABELS).concat([{ color: NODATA, label: "sin población" }]),
       },
       fuel: {
         label: "Combustible",
         legendTitle: "Clase de combustible",
-        colorOf: (p) => FUEL_COLOR[p.fuel_type] ?? NODATA,
+        fill: ['match', ['coalesce', ['get', 'fuel_type'], ''], ...FUEL.flatMap((f) => [f.key, f.color]), NODATA],
         legend: FUEL.map((f) => ({ color: f.color, label: f.label })).concat([{ color: NODATA, label: "sin dato" }]),
       },
       // Air temperature: nearest fire-weather point, computed on demand.
@@ -68,7 +71,7 @@ import { createTerrain } from './terrain.js';
         label: "Temperatura",
         legendTitle: "Temperatura aire 2 m (°C)",
         needs: "weather",
-        colorOf: (p) => (p._temp == null ? NODATA : breakColor(p._temp, T_BREAKS, T_COLORS)),
+        fill: stateExpr('temp', T_BREAKS, T_COLORS),
         legend: breakLegend(T_COLORS, T_LABELS).concat([{ color: NODATA, label: "sin dato" }]),
       },
       // Fire Weather Index (danger): same nearest-point fill, EFFIS classes.
@@ -76,7 +79,7 @@ import { createTerrain } from './terrain.js';
         label: "Peligro (FWI)",
         legendTitle: "Índice FWI · clases EFFIS",
         needs: "weather",
-        colorOf: (p) => (p._fwi == null ? NODATA : breakColor(p._fwi, FWI_BREAKS, FWI_COLORS)),
+        fill: stateExpr('fwi', FWI_BREAKS, FWI_COLORS),
         legend: breakLegend(FWI_COLORS, FWI_LABELS).concat([{ color: NODATA, label: "sin dato" }]),
       },
     };
@@ -88,8 +91,8 @@ const status = (message = '') => { $('map-status').textContent = message; };
 const collection = (features = []) => ({ type: 'FeatureCollection', features });
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let terrain;
-let map, FC, ACT = LAYERS.density;
-let baseIds = [], weatherPromise, h3Promise, wxReady = false;
+let map, ACT = LAYERS.density;
+let baseIds = [], weatherPromise, h3Promise, cellWeatherPromise;
 const selected = new Set();
 const groups = new Map();
 const eventMarkers = new Map();
@@ -142,35 +145,35 @@ $('panel-toggle').onclick = () => {
   $('panel-toggle').textContent = open ? '✕ Cerrar' : '☰ Capas';
 };
 
-// Preserve the five original scales. Precompute static colours once; changing
-// a layer is a paint expression, not a re-upload of 9,408 polygons.
+// Preserve the five original scales. Every layer is a paint expression over the
+// cells MapLibre loads in its worker; changing a layer never re-uploads polygons.
 function renderLegend() {
   $('legend-title').textContent = ACT.legendTitle;
   $('legend-rows').innerHTML = ACT.legend.map((r) => `<div class="lg-row"><i style="background:${r.color}"></i><span class="lg-label">${r.label}</span></div>`).join('');
 }
-async function selectLayer(key) {
-  ACT = LAYERS[key];
-  Object.entries(layerButtons).forEach(([k, b]) => pressed(b, key === k));
-  renderLegend();
-  map.setPaintProperty('cells', 'fill-color', ['coalesce', ['get', `color_${key}`], NODATA]);
-  if (ACT.needs === 'weather' && !wxReady) {
-    const w = await loadWeather();
-    for (const f of FC.features) {
-      const { lat, lng } = f.properties;
+// Temperature and FWI need each cell's nearest weather point. The cell list is
+// read only now, on first use, and the values go into feature state.
+function loadCellWeather() {
+  if (!cellWeatherPromise) cellWeatherPromise = Promise.all([loadWeather(), getJson('data/aragon-density.geojson')]).then(([w, fc]) => {
+    for (const f of fc.features) {
+      const { h3, lat, lng } = f.properties;
       const kx = Math.cos(lat * Math.PI / 180);
       let best = Infinity, near = null;
       for (const p of w.pts) {
         const d = (lat - p.lat) ** 2 + ((lng - p.lng) * kx) ** 2;
         if (d < best) { best = d; near = p.row; }
       }
-      f.properties._temp = near?.temp_c ?? null;
-      f.properties._fwi = near?.fwi ?? null;
-      f.properties.color_temp = LAYERS.temp.colorOf(f.properties);
-      f.properties.color_fwi = LAYERS.fwi.colorOf(f.properties);
+      map.setFeatureState({ source: 'cells', id: h3 }, { temp: near?.temp_c ?? null, fwi: near?.fwi ?? null });
     }
-    map.getSource('cells').setData(FC);
-    wxReady = true;
-  }
+  }).catch((err) => { cellWeatherPromise = null; throw err; });
+  return cellWeatherPromise;
+}
+async function selectLayer(key) {
+  ACT = LAYERS[key];
+  Object.entries(layerButtons).forEach(([k, b]) => pressed(b, key === k));
+  renderLegend();
+  map.setPaintProperty('cells', 'fill-color', ACT.fill);
+  if (ACT.needs === 'weather') await loadCellWeather();
 }
 Object.entries(LAYERS).forEach(([key, layer]) => {
   layerButtons[key] = button('seg', layer.label, () => selectLayer(key));
@@ -374,15 +377,31 @@ Object.entries(PROJECTS).forEach(([key, ov]) => { projectButtons[key] = button('
     }
 
 
+// MapLibre is about 1 MB of script. Fetch and run it after the first paint, so the
+// page and its loading notice are on screen before that download and long task.
+async function loadMapLibre() {
+  // rAF does not fire in a background tab, so a timer starts the map there too.
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => setTimeout(resolve, 0));
+    setTimeout(resolve, 1000);
+  });
+  if (window.maplibregl) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/maplibre-gl-5.24.0.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('No se pudo cargar MapLibre. Revisa la conexión y recarga la página.'));
+    document.head.appendChild(s);
+  });
+}
+
 async function start() {
-  if (!window.maplibregl) throw new Error('No se pudo cargar MapLibre. Revisa la conexión y recarga la página.');
-  // Start the basemap from a tiny manifest while the territorial payload loads.
-  const dataPromise = getJson('data/aragon-density.geojson').then(
-    (data) => ({ data }), (error) => ({ error }));
+  await loadMapLibre();
+  // Start the basemap from a tiny manifest; MapLibre's worker loads the cells.
   const [style, metadata] = await Promise.all([getJson('styles/dark.json'), getJson('data/map-metadata.json')]);
   baseIds = style.layers.map((l) => l.id);
   const padding = { top: 24, bottom: 30, left: innerWidth > 640 ? 350 : 24, right: 24 };
-  map = new maplibregl.Map({ container: 'map', style, bounds: metadata.bounds, fitBoundsOptions: { padding }, maxZoom: 19, maxPitch: 0, pitchWithRotate: true, attributionControl: false });
+  map = new maplibregl.Map({ container: 'map', style, bounds: metadata.bounds, fitBoundsOptions: { padding }, maxZoom: 19, maxPitch: 0, pitchWithRotate: true, attributionControl: false, fadeDuration: 0 });
   map.touchZoomRotate.disableRotation();
   map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'bottom-right');
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
@@ -392,18 +411,14 @@ async function start() {
     status('No se ha podido cargar un recurso del mapa. Puedes cambiar de fondo o recargar la página.');
   });
   await new Promise((resolve) => map.once('load', resolve));
-  const result = await dataPromise;
-  if (result.error) throw result.error;
-  const fc = result.data;
-  FC = fc;
-  for (let i = 0; i < fc.features.length; i++) {
-    const f = fc.features[i];
-    for (const [key, layer] of Object.entries(LAYERS)) f.properties[`color_${key}`] = layer.colorOf(f.properties);
-    // Let input and paint run between batches on slower phones.
-    if (i % 500 === 499) await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-  map.addSource('cells', { type: 'geojson', data: FC, promoteId: 'h3' });
-  map.addLayer({ id: 'cells', source: 'cells', type: 'fill', paint: { 'fill-color': ['get', 'color_density'], 'fill-opacity': .75 } });
+  map.addSource('cells', { type: 'geojson', data: 'data/aragon-density.geojson', promoteId: 'h3' });
+  const cellsShown = () => {
+    if (!map.isSourceLoaded('cells')) return;
+    map.off('sourcedata', cellsShown);
+    $('map-loading').classList.add('done');
+  };
+  map.on('sourcedata', cellsShown);
+  map.addLayer({ id: 'cells', source: 'cells', type: 'fill', paint: { 'fill-color': ACT.fill, 'fill-opacity': .75 } });
   map.addLayer({ id: 'cell-lines', source: 'cells', type: 'line', paint: { 'line-color': '#000', 'line-width': .15 } });
   map.addLayer({ id: 'cell-hover', source: 'cells', type: 'line', paint: { 'line-color': '#fff', 'line-width': 1.2 }, filter: ['==', ['get', 'h3'], ''] });
   terrain = createTerrain(map, ({ state, available, message }) => {
@@ -425,13 +440,16 @@ async function start() {
   map.on('mousemove', 'cells', inspect);
   map.on('click', 'cells', inspect); // touch users can inspect a cell too
   map.on('mouseleave', 'cells', () => { info.style.display = 'none'; map.setFilter('cell-hover', ['==', ['get', 'h3'], '']); });
-  groups.set('effis', addGeo('effis', collection(fc.features.filter((f) => f.properties.hist_fire === 1)), { 'fill-color': '#ff4d4d', 'fill-opacity': .35 }, { 'line-color': '#ff4d4d', 'line-width': 1 }));
-  const m = fc.metadata || {};
-  set('st-cells', fmt(m.cells ?? fc.features.length)); set('st-pop', fmt(m.populationTotal ?? 0));
+  // Burnt cells: a filter over the same source, not a second copy of the data.
+  map.addLayer({ id: 'effis', source: 'cells', type: 'fill', filter: ['==', ['get', 'hist_fire'], 1], paint: { 'fill-color': '#ff4d4d', 'fill-opacity': .35 }, layout: { visibility: 'none' } });
+  map.addLayer({ id: 'effis-line', source: 'cells', type: 'line', filter: ['==', ['get', 'hist_fire'], 1], paint: { 'line-color': '#ff4d4d', 'line-width': 1 }, layout: { visibility: 'none' } });
+  groups.set('effis', { show: (on) => visibility(['effis', 'effis-line'], on) });
+  const m = metadata;
+  set('st-cells', fmt(m.cells)); set('st-pop', fmt(m.populationTotal ?? 0));
   set('st-eld', (m.populationTotal ? Math.round(m.elderlyTotal / m.populationTotal * 100) : 0) + ' %');
 
   for (const id of ['seg', 'base-seg', 'ov-seg', 'proj-seg']) for (const b of $(id).children) b.disabled = false;
-  $('map').setAttribute('aria-label', `Mapa de Aragón · ${fc.features.length} celdas`);
+  $('map').setAttribute('aria-label', `Mapa de Aragón · ${m.cells} celdas`);
   const focusCell = new URLSearchParams(location.search).get('event');
   if (focusCell) {
     await toggleProject('eventos', true);
@@ -440,4 +458,4 @@ async function start() {
     else $('events-note').textContent = 'Eventos: el evento del enlace ya no está activo';
   }
 }
-start().catch((err) => { console.error(err); status(`No se pudo cargar el mapa: ${err.message}`); });
+start().catch((err) => { console.error(err); $('map-loading').classList.add('done'); status(`No se pudo cargar el mapa: ${err.message}`); });
