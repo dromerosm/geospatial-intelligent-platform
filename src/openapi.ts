@@ -118,39 +118,48 @@ export function openApiSpec(): unknown {
 
 // Swagger UI page (CDN assets, like the map's Leaflet). Points at /openapi.json;
 // same-origin server means "Try it out" works directly.
+const docsInfo = (openApiSpec() as { info: { title: string; description: string } }).info;
+const escapeHtml = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Swagger UI's own info block is hidden and replaced by a static header, so the
+// heading order is h1 > h2 > Swagger's h3 tags. The CSS overrides darken the
+// method badges and links to reach WCAG AA contrast and give path links a 24 px
+// tap target. The server picker is hidden: there is one server.
 export const SWAGGER_UI_HTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Google Analytics 4 (shared diegoromero.es property). -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-B8118TCBQY"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
-    gtag("js", new Date());
-    // Visit any page with ?internal=1 once per browser to exclude your own
-    // traffic (GA4 "Internal Traffic" filter); ?internal=0 undoes it.
-    const isInternalTraffic = (() => {
-      try {
-        const flag = new URLSearchParams(location.search).get("internal");
-        if (flag === "1") localStorage.setItem("ga_internal", "1");
-        if (flag === "0") localStorage.removeItem("ga_internal");
-        return localStorage.getItem("ga_internal") === "1";
-      } catch { return false; }
-    })();
-    gtag("config", "G-B8118TCBQY", {
-      anonymize_ip: true,
-      allow_google_signals: false,
-      allow_ad_personalization_signals: false,
-      ...(isInternalTraffic && { traffic_type: "internal" }),
-    });
-  </script>
+  <!-- Google Analytics 4 (shared diegoromero.es property): prototype/analytics.js. -->
+  <script src="/mapa/analytics.js"></script>
   <title>API · Geospatial Intelligence Platform</title>
+  <meta name="description" content="Interactive documentation of the read-only JSON API of the wildfire early-warning platform for Aragón: observations, fire weather, digital twin, lightning, alerts and events." />
+  <link rel="canonical" href="https://geospatial-platform.diegoromero.es/docs" />
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
-  <style>body{margin:0}.topbar{display:none}</style>
+  <style>
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1b1f24}
+    .topbar,.swagger-ui .information-container,.swagger-ui .scheme-container{display:none}
+    .docs-header{max-width:1460px;margin:0 auto;padding:24px 20px 0;box-sizing:border-box}
+    .docs-header h1{margin:0 0 8px;font-size:28px}
+    .docs-header p{margin:0 0 8px;max-width:72ch;line-height:1.5}
+    .docs-header a{color:#1f5fae}
+    .docs-header h2{margin:20px 0 0;font-size:20px}
+    .swagger-ui a,.swagger-ui .info a{color:#1f5fae}
+    .swagger-ui .opblock.opblock-get .opblock-summary-method{background:#1f5fae}
+    .swagger-ui .opblock.opblock-post .opblock-summary-method{background:#1e7b4f}
+    .swagger-ui .opblock.opblock-put .opblock-summary-method{background:#a35a00}
+    .swagger-ui .opblock.opblock-delete .opblock-summary-method{background:#b3261e}
+    .swagger-ui .opblock.opblock-patch .opblock-summary-method{background:#1c7c74}
+    .swagger-ui .opblock-summary-path a.nostyle{display:inline-block;min-height:24px;line-height:24px}
+  </style>
 </head>
 <body>
+  <header class="docs-header">
+    <h1>${escapeHtml(docsInfo.title)}</h1>
+    <p>${escapeHtml(docsInfo.description)}</p>
+    <p><a href="/">Project home</a> · <a href="/openapi.json">OpenAPI 3.1 spec</a></p>
+    <h2>Endpoints</h2>
+  </header>
   <div id="ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
   <script>
