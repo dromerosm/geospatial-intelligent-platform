@@ -270,7 +270,15 @@ export default {
       : controller.cron === "40 * * * *" ? runGdacs(env)
       : controller.cron === "50 */6 * * *" ? runAemetAvisos(env)
       : runFirms(env);
-    ctx.waitUntil(job.catch((err) => console.error("scheduled error:", err)));
+    // Log the message as text: an Error passed as an argument reaches Workers Logs as its stack only,
+    // which hides the HTTP status and response body the fetchers put in the message.
+    ctx.waitUntil(
+      job.catch((err) =>
+        console.error(
+          `scheduled error (${controller.cron}): ${err instanceof Error ? err.message : String(err)}`.slice(0, 1000),
+        ),
+      ),
+    );
   },
 
   async fetch(req: Request, env: Env): Promise<Response> {
